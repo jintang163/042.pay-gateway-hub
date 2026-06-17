@@ -1,11 +1,14 @@
 package com.payhub.admin.config;
 
 import com.payhub.pay.service.PayRefundService;
+import com.payhub.settlement.service.SettlementService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+
+import java.time.LocalDate;
 
 @Slf4j
 @Configuration
@@ -15,6 +18,9 @@ public class ScheduleConfig {
     @Autowired
     private PayRefundService payRefundService;
 
+    @Autowired
+    private SettlementService settlementService;
+
     @Scheduled(cron = "0 */5 * * * ?")
     public void refundRetryTask() {
         log.info("定时任务：开始执行退款重试任务");
@@ -23,6 +29,29 @@ public class ScheduleConfig {
             log.info("定时任务：退款重试任务执行完成");
         } catch (Exception e) {
             log.error("定时任务：退款重试任务执行异常", e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void generateSettlementTask() {
+        log.info("定时任务：开始执行结算生成任务");
+        try {
+            LocalDate yesterday = LocalDate.now().minusDays(1);
+            settlementService.generateSettlement(yesterday);
+            log.info("定时任务：结算生成任务执行完成, 结算日期: {}", yesterday);
+        } catch (Exception e) {
+            log.error("定时任务：结算生成任务执行异常", e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 3 * * ?")
+    public void executeSettlementTask() {
+        log.info("定时任务：开始执行批量结算打款任务");
+        try {
+            settlementService.executeSettlementTask();
+            log.info("定时任务：批量结算打款任务执行完成");
+        } catch (Exception e) {
+            log.error("定时任务：批量结算打款任务执行异常", e);
         }
     }
 }

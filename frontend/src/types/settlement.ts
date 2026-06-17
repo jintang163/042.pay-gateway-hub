@@ -1,69 +1,104 @@
 import type { PageParams, PageResult } from './common';
 
-export type SettlementStatus = 'pending' | 'settling' | 'success' | 'failed';
+export type SettleStatus = 0 | 1 | 2 | 3;
 
 export interface Settlement {
-  id: string;
+  id: number;
   settlementNo: string;
-  merchantId: string;
-  merchantName?: string;
-  periodStart: string;
-  periodEnd: string;
+  merchantNo: string;
+  settleDate: string;
   totalAmount: number;
-  totalFee: number;
-  settlementAmount: number;
-  currency: string;
+  feeAmount: number;
+  actualSettleAmount: number;
   orderCount: number;
-  refundCount: number;
-  refundAmount: number;
-  bankAccount?: string;
-  bankName?: string;
-  accountHolder?: string;
-  status: SettlementStatus;
-  settleTime?: string;
+  payChannel: string;
+  settleStatus: SettleStatus;
+  bankName: string;
+  bankAccount: string;
+  accountName: string;
   failReason?: string;
+  retryCount?: number;
+  settleTime?: string;
   createTime: string;
-  updateTime?: string;
 }
 
 export interface SettlementQueryParams extends PageParams {
   settlementNo?: string;
-  merchantId?: string;
-  status?: SettlementStatus;
-  startTime?: string;
-  endTime?: string;
+  settleStatus?: SettleStatus;
+  settleDateStart?: string;
+  settleDateEnd?: string;
+  payChannel?: string;
 }
 
 export type SettlementListResult = PageResult<Settlement>;
 
-export type SplitRuleStatus = 'enabled' | 'disabled';
+export interface SplitDetail {
+  id: number;
+  splitDetailNo: string;
+  orderNo: string;
+  merchantNo: string;
+  receiverAccount: string;
+  receiverName: string;
+  splitType: 'PERCENT' | 'FIXED';
+  splitValue: number;
+  splitAmount: number;
+  status: number;
+  remark?: string;
+  settleTime?: string;
+  createTime: string;
+  statusDesc: string;
+}
+
+export interface SplitDetailQueryParams extends PageParams {
+  splitDetailNo?: string;
+  orderNo?: string;
+  receiverAccount?: string;
+  receiverName?: string;
+  status?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export type SplitDetailListResult = PageResult<SplitDetail>;
 
 export interface SplitRule {
-  id: string;
-  ruleId: string;
+  id: number;
+  ruleNo: string;
   ruleName: string;
-  merchantId: string;
-  merchantName?: string;
-  description?: string;
-  ruleContent: string;
-  status: SplitRuleStatus;
-  createTime: string;
-  updateTime?: string;
+  merchantNo: string;
+  splitDetails: string;
+  status: number;
+  statusDesc: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SplitRuleQueryParams extends PageParams {
-  ruleId?: string;
+  ruleNo?: string;
   ruleName?: string;
-  merchantId?: string;
-  status?: SplitRuleStatus;
+  merchantNo?: string;
+  status?: number;
 }
 
 export type SplitRuleListResult = PageResult<SplitRule>;
 
-export interface SplitRuleCreateRequest {
+export interface SplitRuleItem {
+  receiverAccount: string;
+  receiverName: string;
+  splitValue: number;
+}
+
+export interface SplitRuleSaveRequest {
+  id?: number;
   ruleName: string;
-  merchantId: string;
-  description?: string;
-  ruleContent: string;
-  status?: SplitRuleStatus;
+  merchantNo: string;
+  splitType: 'PERCENT' | 'FIXED';
+  splitDetails: string;
+  status: number;
+}
+
+export interface SplitCalculateRequest {
+  orderAmount: number;
+  splitType: 'PERCENT' | 'FIXED';
+  details: SplitRuleItem[];
 }

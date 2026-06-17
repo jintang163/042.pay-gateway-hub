@@ -33,6 +33,22 @@ public class SettlementRecord implements Serializable {
 
     private Integer settleStatus;
 
+    private String payChannel;
+
+    private String bankName;
+
+    private String bankAccount;
+
+    private String accountName;
+
+    private String failReason;
+
+    private Integer retryCount;
+
+    private LocalDateTime nextRetryTime;
+
+    private LocalDateTime settleTime;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

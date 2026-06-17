@@ -6,45 +6,40 @@ import type {
   SplitRule,
   SplitRuleQueryParams,
   SplitRuleListResult,
-  SplitRuleCreateRequest,
+  SplitRuleSaveRequest,
+  SplitDetail,
+  SplitDetailQueryParams,
+  SplitDetailListResult,
+  SplitCalculateRequest,
 } from '@/types/settlement';
 
 export const settlementApi = {
   list: (params: SettlementQueryParams) => {
-    return request.get<SettlementListResult>('/api/settlement/settlement/list', params);
+    return request.get<SettlementListResult>('/api/settlement/list', params);
   },
 
-  detail: (settlementNo: string) => {
-    return request.get<Settlement>(`/api/settlement/settlement/${settlementNo}`);
+  detail: (id: number) => {
+    return request.get<Settlement>(`/api/settlement/${id}`);
   },
 
-  generate: (data: { merchantId: string; periodStart: string; periodEnd: string }) => {
-    return request.post<{ settlementId: string; settlementNo: string }>('/api/settlement/settlement/generate', data);
+  generate: (data: { settleDate: string }) => {
+    return request.post<{ id: number; settlementNo: string }>('/api/settlement/generate', data);
   },
 
-  create: (data: { merchantId: string; periodStart: string; periodEnd: string }) => {
-    return request.post<{ settlementId: string; settlementNo: string }>('/api/settlement/settlement/generate', data);
+  confirm: (id: number) => {
+    return request.post<void>(`/api/settlement/${id}/confirm`);
   },
 
-  confirm: (id: string) => {
-    return request.post<void>(`/api/settlement/settlement/confirm/${id}`);
+  retry: (id: number) => {
+    return request.post<void>(`/api/settlement/${id}/retry`);
   },
 
-  retry: (id: string) => {
-    return request.post<{ settlementId: string; settlementNo: string }>(`/api/settlement/${id}/retry`);
+  retryAll: () => {
+    return request.post<void>('/api/settlement/retry-all');
   },
 
-  export: (params: Partial<SettlementQueryParams>) => {
-    return request.download('/api/settlement/export', params);
-  },
-
-  getSummary: (merchantId?: string) => {
-    return request.get<{
-      totalAmount: number;
-      totalFee: number;
-      settlementAmount: number;
-      orderCount: number;
-    }>('/api/settlement/summary', { merchantId });
+  details: (id: number) => {
+    return request.get<SplitDetailListResult>(`/api/settlement/${id}/details`);
   },
 };
 
@@ -53,36 +48,34 @@ export const splitRuleApi = {
     return request.get<SplitRuleListResult>('/api/split-rule/list', params);
   },
 
-  detail: (id: string) => {
+  detail: (id: number) => {
     return request.get<SplitRule>(`/api/split-rule/${id}`);
   },
 
-  save: (data: SplitRuleCreateRequest) => {
-    return request.post<{ id: string; ruleId: string }>('/api/split-rule/save', data);
+  save: (data: SplitRuleSaveRequest) => {
+    return request.post<{ id: number; ruleNo: string }>('/api/split-rule/save', data);
   },
 
-  create: (data: SplitRuleCreateRequest) => {
-    return request.post<{ id: string; ruleId: string }>('/api/split-rule/save', data);
-  },
-
-  update: (id: string, data: Partial<SplitRuleCreateRequest>) => {
-    return request.put<void>(`/api/split-rule/${id}`, data);
-  },
-
-  remove: (id: string) => {
+  delete: (id: number) => {
     return request.post<void>(`/api/split-rule/delete/${id}`);
   },
 
-  delete: (id: string) => {
-    return request.post<void>(`/api/split-rule/delete/${id}`);
+  toggle: (id: number) => {
+    return request.post<void>(`/api/split-rule/${id}/toggle`);
+  },
+};
+
+export const splitDetailApi = {
+  list: (params: SplitDetailQueryParams) => {
+    return request.get<SplitDetailListResult>('/api/split-detail/list', params);
   },
 
-  enable: (id: string) => {
-    return request.post<void>(`/api/split-rule/${id}/enable`);
+  getByOrderNo: (orderNo: string) => {
+    return request.get<SplitDetail[]>(`/api/split-detail/order/${orderNo}`);
   },
 
-  disable: (id: string) => {
-    return request.post<void>(`/api/split-rule/${id}/disable`);
+  calculate: (data: SplitCalculateRequest) => {
+    return request.post<SplitDetail[]>('/api/split-detail/calculate', data);
   },
 };
 

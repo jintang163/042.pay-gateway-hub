@@ -172,7 +172,34 @@ CREATE TABLE IF NOT EXISTS `pay_split_rule` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分账规则表';
 
 -- -----------------------------------------------
--- 7. 结算记录表
+-- 7. 分账明细表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `pay_split_detail` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `split_detail_no` VARCHAR(64) NOT NULL COMMENT '分账明细单号',
+  `order_no` VARCHAR(64) NOT NULL COMMENT '支付订单号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户号',
+  `rule_no` VARCHAR(64) DEFAULT NULL COMMENT '分账规则号',
+  `receiver_account` VARCHAR(128) DEFAULT NULL COMMENT '接收方账户/标识',
+  `receiver_name` VARCHAR(128) DEFAULT NULL COMMENT '接收方名称',
+  `split_type` VARCHAR(32) DEFAULT NULL COMMENT '分账类型：PERCENT-按比例 FIXED-固定金额 REMAINING-剩余',
+  `split_value` DECIMAL(18,2) DEFAULT NULL COMMENT '分账值，比例%或固定金额分',
+  `split_amount` DECIMAL(18,2) NOT NULL COMMENT '实际分账金额，单位分',
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0待结算 1已结算',
+  `settle_time` DATETIME DEFAULT NULL COMMENT '结算时间',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_split_detail_no` (`split_detail_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分账明细表';
+
+-- -----------------------------------------------
+-- 8. 结算记录表
 -- -----------------------------------------------
 CREATE TABLE IF NOT EXISTS `settlement_record` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
