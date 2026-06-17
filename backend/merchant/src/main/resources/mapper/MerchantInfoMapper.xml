@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.merchant.mapper.MerchantInfoMapper">
+
+    <resultMap id="MerchantInfoMap" type="com.payhub.merchant.entity.MerchantInfo">
+        <id column="id" property="id"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="business_license_no" property="businessLicenseNo"/>
+        <result column="legal_person_name" property="legalPersonName"/>
+        <result column="legal_person_id_no" property="legalPersonIdNo"/>
+        <result column="contact_phone" property="contactPhone"/>
+        <result column="contact_email" property="contactEmail"/>
+        <result column="settlement_bank_name" property="settlementBankName"/>
+        <result column="settlement_bank_account" property="settlementBankAccount"/>
+        <result column="settlement_account_name" property="settlementAccountName"/>
+        <result column="audit_status" property="auditStatus"/>
+        <result column="audit_remark" property="auditRemark"/>
+        <result column="status" property="status"/>
+        <result column="api_key_md5" property="apiKeyMd5"/>
+        <result column="api_key_rsa_public" property="apiKeyRsaPublic"/>
+        <result column="api_key_rsa_private" property="apiKeyRsaPrivate"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="MerchantInfoMap">
+        SELECT
+            id,
+            merchant_no,
+            merchant_name,
+            business_license_no,
+            legal_person_name,
+            legal_person_id_no,
+            contact_phone,
+            contact_email,
+            settlement_bank_name,
+            settlement_bank_account,
+            settlement_account_name,
+            audit_status,
+            audit_remark,
+            status,
+            api_key_md5,
+            api_key_rsa_public,
+            api_key_rsa_private,
+            created_at,
+            updated_at,
+            deleted
+        FROM merchant_info
+        <where>
+            deleted = 0
+            <if test="params.merchantNo != null and params.merchantNo != ''">
+                AND merchant_no = #{params.merchantNo}
+            </if>
+            <if test="params.merchantName != null and params.merchantName != ''">
+                AND merchant_name LIKE CONCAT('%', #{params.merchantName}, '%')
+            </if>
+            <if test="params.businessLicenseNo != null and params.businessLicenseNo != ''">
+                AND business_license_no = #{params.businessLicenseNo}
+            </if>
+            <if test="params.auditStatus != null">
+                AND audit_status = #{params.auditStatus}
+            </if>
+            <if test="params.status != null">
+                AND status = #{params.status}
+            </if>
+            <if test="params.contactPhone != null and params.contactPhone != ''">
+                AND contact_phone = #{params.contactPhone}
+            </if>
+            <if test="params.startDate != null and params.startDate != ''">
+                AND created_at <![CDATA[ >= ]]> #{params.startDate}
+            </if>
+            <if test="params.endDate != null and params.endDate != ''">
+                AND created_at <![CDATA[ <= ]]> #{params.endDate}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

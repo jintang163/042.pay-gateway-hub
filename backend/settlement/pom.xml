@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.payhub</groupId>
+        <artifactId>pay-gateway-hub</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>settlement</artifactId>
+    <name>settlement</name>
+    <description>结算模块：分账、结算、对账</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.payhub</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.payhub</groupId>
+            <artifactId>pay</artifactId>
+        </dependency>
+    </dependencies>
+</project>
