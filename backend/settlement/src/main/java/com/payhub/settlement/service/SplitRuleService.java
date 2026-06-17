@@ -20,4 +20,6 @@ public interface SplitRuleService extends IService<PaySplitRule> {
     List<SplitRuleVO> listByMerchantNo(String merchantNo);
 
     IPage<SplitRuleVO> listPage(Long current, Long size, Map<String, Object> params);
+
+    void toggleRule(Long id);
 }

@@ -120,32 +120,8 @@ const SettlementPage = () => {
       const result = await settlementApi.list(queryParams);
       setSettleData(result.list);
       setSettlePagination({ current: page, pageSize, total: result.total });
-    } catch {
-      const statuses: SettleStatus[] = [0, 1, 2, 3];
-      const channels = ['ALIPAY', 'WECHAT', 'UNIONPAY'];
-      const mockData: Settlement[] = Array.from({ length: 28 }, (_, i) => ({
-        id: i + 1,
-        settlementNo: 'STL' + dayjs().format('YYYYMMDD') + String(1000 + i).padStart(6, '0'),
-        merchantNo: 'M' + String(1000 + (i % 10)).padStart(4, '0'),
-        settleDate: dayjs().subtract(i, 'day').format('YYYY-MM-DD'),
-        totalAmount: Math.floor(Math.random() * 10000000 + 100000),
-        feeAmount: Math.floor(Math.random() * 100000 + 10000),
-        actualSettleAmount: Math.floor(Math.random() * 9900000 + 99000),
-        orderCount: Math.floor(Math.random() * 500 + 50),
-        payChannel: channels[i % channels.length],
-        settleStatus: statuses[i % statuses.length],
-        bankName: '中国工商银行北京市分行',
-        bankAccount: '6222021234567890123',
-        accountName: '示例商户' + ((i % 10) + 1),
-        failReason: statuses[i % statuses.length] === 3 ? '银行账户信息错误' : undefined,
-        retryCount: statuses[i % statuses.length] === 3 ? 2 : 0,
-        settleTime: statuses[i % statuses.length] === 2 ? dayjs().subtract(i, 'day').add(2, 'hour').format('YYYY-MM-DD HH:mm:ss') : undefined,
-        createTime: dayjs().subtract(i, 'day').format('YYYY-MM-DD HH:mm:ss'),
-      }));
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-      setSettleData(mockData.slice(start, end));
-      setSettlePagination({ current: page, pageSize, total: mockData.length });
+    } catch (e) {
+      message.error('加载结算记录失败');
     } finally {
       setSettleLoading(false);
     }
@@ -162,30 +138,8 @@ const SettlementPage = () => {
       const result = await splitRuleApi.list(queryParams);
       setSplitRuleData(result.list);
       setSplitRulePagination({ current: page, pageSize, total: result.total });
-    } catch {
-      const mockData: SplitRule[] = Array.from({ length: 12 }, (_, i) => {
-        const type = i % 2 === 0 ? 'PERCENT' : 'FIXED';
-        const details = [
-          { receiverAccount: 'ACC001', receiverName: '主账户', splitValue: type === 'PERCENT' ? 70 : 7000 },
-          { receiverAccount: 'ACC002', receiverName: '子账户A', splitValue: type === 'PERCENT' ? 20 : 2000 },
-          { receiverAccount: 'ACC003', receiverName: '子账户B', splitValue: type === 'PERCENT' ? 10 : 1000 },
-        ];
-        return {
-          id: i + 1,
-          ruleNo: 'SR' + String(1000 + i).padStart(6, '0'),
-          ruleName: '分账规则-' + (i + 1),
-          merchantNo: 'M' + String(1000 + (i % 10)).padStart(4, '0'),
-          splitDetails: JSON.stringify({ type, details }),
-          status: i % 2,
-          statusDesc: i % 2 === 1 ? '启用' : '禁用',
-          createdAt: dayjs().subtract(i, 'day').format('YYYY-MM-DD HH:mm:ss'),
-          updatedAt: dayjs().subtract(i, 'day').add(1, 'hour').format('YYYY-MM-DD HH:mm:ss'),
-        };
-      });
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-      setSplitRuleData(mockData.slice(start, end));
-      setSplitRulePagination({ current: page, pageSize, total: mockData.length });
+    } catch (e) {
+      message.error('加载分账规则失败');
     } finally {
       setSplitRuleLoading(false);
     }
@@ -202,29 +156,8 @@ const SettlementPage = () => {
       const result = await splitDetailApi.list(queryParams);
       setSplitDetailData(result.list);
       setSplitDetailPagination({ current: page, pageSize, total: result.total });
-    } catch {
-      const types: Array<'PERCENT' | 'FIXED'> = ['PERCENT', 'FIXED'];
-      const statuses = [0, 1, 2];
-      const mockData: SplitDetail[] = Array.from({ length: 35 }, (_, i) => ({
-        id: i + 1,
-        splitDetailNo: 'SD' + dayjs().format('YYYYMMDD') + String(1000 + i).padStart(6, '0'),
-        orderNo: 'ORD' + dayjs().format('YYYYMMDD') + String(2000 + i).padStart(6, '0'),
-        merchantNo: 'M' + String(1000 + (i % 10)).padStart(4, '0'),
-        receiverAccount: 'ACC' + String(100 + (i % 5)).padStart(3, '0'),
-        receiverName: '接收方' + ((i % 5) + 1),
-        splitType: types[i % types.length],
-        splitValue: types[i % types.length] === 'PERCENT' ? (i % 5 + 1) * 10 : (i % 5 + 1) * 1000,
-        splitAmount: Math.floor(Math.random() * 500000 + 10000),
-        status: statuses[i % statuses.length],
-        statusDesc: ['待分账', '分账中', '分账完成'][i % statuses.length],
-        remark: i % 3 === 0 ? '正常分账' : undefined,
-        settleTime: statuses[i % statuses.length] === 2 ? dayjs().subtract(i, 'day').add(1, 'hour').format('YYYY-MM-DD HH:mm:ss') : undefined,
-        createTime: dayjs().subtract(i, 'day').format('YYYY-MM-DD HH:mm:ss'),
-      }));
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-      setSplitDetailData(mockData.slice(start, end));
-      setSplitDetailPagination({ current: page, pageSize, total: mockData.length });
+    } catch (e) {
+      message.error('加载分账明细失败');
     } finally {
       setSplitDetailLoading(false);
     }
@@ -309,9 +242,8 @@ const SettlementPage = () => {
       await splitRuleApi.delete(id);
       message.success('删除成功');
       fetchSplitRuleData();
-    } catch {
-      setSplitRuleData((prev) => prev.filter((item) => item.id !== id));
-      message.success('删除成功');
+    } catch (e) {
+      message.error('删除失败');
     }
   };
 
@@ -320,15 +252,8 @@ const SettlementPage = () => {
       await splitRuleApi.toggle(record.id);
       message.success('状态更新成功');
       fetchSplitRuleData();
-    } catch {
-      setSplitRuleData((prev) =>
-        prev.map((item) =>
-          item.id === record.id
-            ? { ...item, status: item.status === 1 ? 0 : 1, statusDesc: item.status === 1 ? '禁用' : '启用' }
-            : item,
-        ),
-      );
-      message.success('状态更新成功');
+    } catch (e) {
+      message.error('状态更新失败');
     }
   };
 
@@ -378,22 +303,8 @@ const SettlementPage = () => {
     try {
       const result = await settlementApi.details(record.id);
       setSettleDetails(result.list);
-    } catch {
-      const mockDetails: SplitDetail[] = Array.from({ length: 8 }, (_, i) => ({
-        id: i + 1,
-        splitDetailNo: 'SD' + dayjs().format('YYYYMMDD') + String(1000 + i).padStart(6, '0'),
-        orderNo: 'ORD' + dayjs().format('YYYYMMDD') + String(2000 + i).padStart(6, '0'),
-        merchantNo: record.merchantNo,
-        receiverAccount: 'ACC' + String(100 + i).padStart(3, '0'),
-        receiverName: '接收方' + (i + 1),
-        splitType: i % 2 === 0 ? 'PERCENT' : 'FIXED',
-        splitValue: i % 2 === 0 ? (i % 5 + 1) * 10 : (i % 5 + 1) * 1000,
-        splitAmount: Math.floor(Math.random() * 500000 + 10000),
-        status: record.settleStatus === 2 ? 2 : record.settleStatus,
-        statusDesc: record.settleStatus === 2 ? '分账完成' : settleStatusMap[record.settleStatus]?.text || '',
-        createTime: record.createTime,
-      }));
-      setSettleDetails(mockDetails);
+    } catch (e) {
+      message.error('加载结算详情失败');
     }
   };
 
@@ -402,13 +313,8 @@ const SettlementPage = () => {
       await settlementApi.confirm(record.id);
       message.success('确认结算成功');
       fetchSettleData();
-    } catch {
-      message.success('确认结算成功');
-      setSettleData((prev) =>
-        prev.map((item) =>
-          item.id === record.id ? { ...item, settleStatus: 1 as SettleStatus } : item,
-        ),
-      );
+    } catch (e) {
+      message.error('确认结算失败');
     }
   };
 
@@ -417,15 +323,8 @@ const SettlementPage = () => {
       await settlementApi.retry(record.id);
       message.success('重试成功');
       fetchSettleData();
-    } catch {
-      message.success('重试成功');
-      setSettleData((prev) =>
-        prev.map((item) =>
-          item.id === record.id
-            ? { ...item, settleStatus: 1 as SettleStatus, retryCount: (item.retryCount || 0) + 1 }
-            : item,
-        ),
-      );
+    } catch (e) {
+      message.error('重试失败');
     }
   };
 

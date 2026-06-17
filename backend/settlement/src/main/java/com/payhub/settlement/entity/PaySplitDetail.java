@@ -40,6 +40,22 @@ public class PaySplitDetail implements Serializable {
 
     private Integer status;
 
+    private Integer transferStatus;
+
+    private String transferNo;
+
+    private String channelTransferNo;
+
+    private String transferFailReason;
+
+    private LocalDateTime transferTime;
+
+    private Integer transferRetryCount;
+
+    private LocalDateTime nextTransferRetryTime;
+
+    private String transferChannel;
+
     private LocalDateTime settleTime;
 
     private String remark;

@@ -49,6 +49,10 @@ public class SettlementRecord implements Serializable {
 
     private LocalDateTime settleTime;
 
+    private String splitTransferNo;
+
+    private Long splitDetailId;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

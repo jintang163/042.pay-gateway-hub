@@ -81,6 +81,9 @@ public class SplitRuleServiceImpl extends ServiceImpl<PaySplitRuleMapper, PaySpl
         Page<PaySplitRule> page = new Page<>(current, size);
         LambdaQueryWrapper<PaySplitRule> wrapper = new LambdaQueryWrapper<>();
         if (params != null) {
+            if (params.get("ruleNo") != null) {
+                wrapper.like(PaySplitRule::getRuleNo, params.get("ruleNo"));
+            }
             if (params.get("merchantNo") != null) {
                 wrapper.eq(PaySplitRule::getMerchantNo, params.get("merchantNo"));
             }
@@ -94,6 +97,18 @@ public class SplitRuleServiceImpl extends ServiceImpl<PaySplitRuleMapper, PaySpl
         wrapper.orderByDesc(PaySplitRule::getId);
         IPage<PaySplitRule> rulePage = this.page(page, wrapper);
         return rulePage.convert(this::convertToVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void toggleRule(Long id) {
+        PaySplitRule rule = this.getById(id);
+        if (rule == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "分账规则不存在");
+        }
+        rule.setStatus(rule.getStatus() == 1 ? 0 : 1);
+        this.updateById(rule);
+        log.info("分账规则状态切换成功: id={}, status={}", id, rule.getStatus());
     }
 
     private SplitRuleVO convertToVO(PaySplitRule rule) {

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/settlement/splitRule")
+@RequestMapping("/api/split-rule")
 public class SplitRuleController {
 
     @Autowired
@@ -44,14 +44,22 @@ public class SplitRuleController {
         return Result.success(list);
     }
 
+    @PostMapping("/{id}/toggle")
+    public Result<Void> toggle(@PathVariable Long id) {
+        splitRuleService.toggleRule(id);
+        return Result.success();
+    }
+
     @GetMapping("/list")
     public Result<IPage<SplitRuleVO>> list(
             @RequestParam(defaultValue = "1") Long current,
             @RequestParam(defaultValue = "10") Long size,
+            @RequestParam(required = false) String ruleNo,
             @RequestParam(required = false) String merchantNo,
             @RequestParam(required = false) String ruleName,
             @RequestParam(required = false) Integer status) {
         Map<String, Object> params = new HashMap<>();
+        params.put("ruleNo", ruleNo);
         params.put("merchantNo", merchantNo);
         params.put("ruleName", ruleName);
         params.put("status", status);

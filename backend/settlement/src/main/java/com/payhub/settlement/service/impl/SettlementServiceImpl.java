@@ -5,6 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.payhub.channel.transfer.TransferRequest;
+import com.payhub.channel.transfer.TransferResult;
+import com.payhub.channel.transfer.TransferService;
+import com.payhub.channel.transfer.TransferServiceFactory;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.OrderNoGenerator;
@@ -15,6 +19,7 @@ import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.settlement.dto.SettlementVO;
 import com.payhub.settlement.entity.PaySplitDetail;
 import com.payhub.settlement.entity.SettlementRecord;
+import com.payhub.settlement.mapper.PaySplitDetailMapper;
 import com.payhub.settlement.mapper.SettlementRecordMapper;
 import com.payhub.settlement.service.SettlementService;
 import com.payhub.settlement.service.SplitEngineService;
@@ -45,7 +50,18 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
     @Autowired
     private MerchantInfoService merchantInfoService;
 
+    @Autowired
+    private PaySplitDetailMapper paySplitDetailMapper;
+
+    @Autowired
+    private TransferServiceFactory transferServiceFactory;
+
     private static final int MAX_RETRY_COUNT = 5;
+
+    private static final int TRANSFER_STATUS_PENDING = 0;
+    private static final int TRANSFER_STATUS_PROCESSING = 1;
+    private static final int TRANSFER_STATUS_SUCCESS = 2;
+    private static final int TRANSFER_STATUS_FAIL = 3;
 
     @Override
     public SettlementVO getBySettlementNo(String settlementNo) {
@@ -189,75 +205,264 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
 
     @Override
     public void executeSettlementTask() {
-        log.info("开始执行批量结算打款任务");
+        log.info("开始执行批量分账明细打款任务");
 
-        LambdaQueryWrapper<SettlementRecord> wrapper = new LambdaQueryWrapper<>();
-        wrapper.and(w -> w.eq(SettlementRecord::getSettleStatus, 0)
-                        .or()
-                        .and(w2 -> w2.eq(SettlementRecord::getSettleStatus, 3)
-                                .lt(SettlementRecord::getNextRetryTime, LocalDateTime.now())
-                                .lt(SettlementRecord::getRetryCount, MAX_RETRY_COUNT)))
-                .orderByAsc(SettlementRecord::getId)
-                .last("LIMIT 100");
-
-        List<SettlementRecord> records = this.list(wrapper);
-        if (records.isEmpty()) {
-            log.info("没有需要处理的结算记录");
+        List<PaySplitDetail> pendingDetails = paySplitDetailMapper.selectPendingTransferList(100);
+        if (pendingDetails.isEmpty()) {
+            log.info("没有需要处理的分账打款明细");
             return;
         }
 
-        log.info("待处理结算记录数量: {}", records.size());
+        log.info("待处理分账打款明细数量: {}", pendingDetails.size());
 
-        for (SettlementRecord record : records) {
+        for (PaySplitDetail detail : pendingDetails) {
             try {
-                processSettlement(record);
+                processSplitDetailTransfer(detail);
             } catch (Exception e) {
-                log.error("处理结算记录异常, id={}, settlementNo={}", record.getId(), record.getSettlementNo(), e);
+                log.error("处理分账明细打款异常, id={}, splitDetailNo={}", detail.getId(), detail.getSplitDetailNo(), e);
             }
         }
 
-        log.info("批量结算打款任务执行完成");
+        log.info("批量分账明细打款任务执行完成");
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void processSettlement(SettlementRecord record) {
         log.info("开始处理结算记录: id={}, settlementNo={}", record.getId(), record.getSettlementNo());
 
+        LambdaQueryWrapper<PaySplitDetail> detailWrapper = new LambdaQueryWrapper<>();
+        detailWrapper.eq(PaySplitDetail::getSettlementId, record.getId());
+        List<PaySplitDetail> details = paySplitDetailMapper.selectList(detailWrapper);
+
+        if (details.isEmpty()) {
+            log.warn("结算记录 {} 没有分账明细", record.getSettlementNo());
+            return;
+        }
+
         record.setSettleStatus(1);
         this.updateById(record);
 
-        boolean success = mockTransfer(record);
-
-        if (success) {
-            record.setSettleStatus(2);
-            record.setSettleTime(LocalDateTime.now());
-            record.setFailReason(null);
-            this.updateById(record);
-
-            splitEngineService.updateStatusBySettlementId(record.getId(), 1);
-
-            log.info("结算成功: id={}, settlementNo={}, amount={}",
-                    record.getId(), record.getSettlementNo(), record.getActualSettleAmount());
-        } else {
-            record.setSettleStatus(3);
-            record.setFailReason("模拟转账失败");
-            record.setRetryCount(record.getRetryCount() == null ? 1 : record.getRetryCount() + 1);
-
-            if (record.getRetryCount() < MAX_RETRY_COUNT) {
-                record.setNextRetryTime(calculateNextRetryTime(record.getRetryCount()));
+        int pendingCount = 0;
+        for (PaySplitDetail detail : details) {
+            if (detail.getTransferStatus() == null
+                    || detail.getTransferStatus() == TRANSFER_STATUS_PENDING
+                    || detail.getTransferStatus() == TRANSFER_STATUS_FAIL) {
+                pendingCount++;
+                try {
+                    processSplitDetailTransfer(detail);
+                } catch (Exception e) {
+                    log.error("处理分账明细打款异常, detailId={}", detail.getId(), e);
+                }
             }
-
-            this.updateById(record);
-
-            log.warn("结算失败: id={}, settlementNo={}, retryCount={}, nextRetryTime={}",
-                    record.getId(), record.getSettlementNo(), record.getRetryCount(), record.getNextRetryTime());
         }
+
+        log.info("结算 {} 处理完成, 共{}条分账明细, 本次触发{}条待打款",
+                record.getSettlementNo(), details.size(), pendingCount);
     }
 
-    private boolean mockTransfer(SettlementRecord record) {
-        log.info("模拟转账: settlementNo={}, amount={}, account={}",
-                record.getSettlementNo(), record.getActualSettleAmount(), record.getBankAccount());
-        return Math.random() > 0.2;
+    @Transactional(rollbackFor = Exception.class)
+    public void processSplitDetailTransfer(PaySplitDetail detail) {
+        log.info("开始处理分账明细打款: id={}, splitDetailNo={}, settlementId={}, amount={}",
+                detail.getId(), detail.getSplitDetailNo(), detail.getSettlementId(), detail.getSplitAmount());
+
+        String transferNo = OrderNoGenerator.generateWithPrefix("TF");
+        detail.setTransferNo(transferNo);
+        detail.setTransferStatus(TRANSFER_STATUS_PROCESSING);
+
+        SettlementRecord settlement = this.getById(detail.getSettlementId());
+        String transferChannel = determineTransferChannel(settlement, detail);
+        detail.setTransferChannel(transferChannel);
+
+        paySplitDetailMapper.updateById(detail);
+
+        TransferRequest request = buildTransferRequest(detail, settlement, transferChannel);
+
+        TransferResult result;
+        try {
+            TransferService transferService = transferServiceFactory.getTransferService(transferChannel);
+            result = transferService.transfer(request);
+        } catch (Exception e) {
+            log.error("调用转账通道异常, detailId={}, channel={}", detail.getId(), transferChannel, e);
+            result = TransferResult.fail(transferNo, "通道调用异常: " + e.getMessage());
+        }
+
+        handleTransferResult(detail, result);
+
+        checkAndUpdateSettlementStatus(detail.getSettlementId());
+    }
+
+    private String determineTransferChannel(SettlementRecord settlement, PaySplitDetail detail) {
+        if (detail.getReceiverAccount() != null && detail.getReceiverAccount().startsWith("62")) {
+            return "UNION_PAY";
+        }
+        String account = detail.getReceiverAccount();
+        if (account != null && (account.contains("@") || account.matches("^1[3-9]\\d{9}$"))) {
+            return "ALIPAY";
+        }
+        if (settlement != null && settlement.getPayChannel() != null) {
+            String channel = settlement.getPayChannel();
+            if ("ALIPAY".equals(channel) || "WECHAT_PAY".equals(channel) || "UNION_PAY".equals(channel)) {
+                return channel;
+            }
+        }
+        return "ALIPAY";
+    }
+
+    private TransferRequest buildTransferRequest(PaySplitDetail detail, SettlementRecord settlement, String channel) {
+        TransferRequest request = new TransferRequest();
+        request.setTransferNo(detail.getTransferNo());
+        request.setChannel(channel);
+        request.setReceiverAccount(detail.getReceiverAccount());
+        request.setReceiverName(detail.getReceiverName());
+        request.setAmount(detail.getSplitAmount() != null
+                ? detail.getSplitAmount().multiply(new BigDecimal("100"))
+                : BigDecimal.ZERO);
+        if (settlement != null) {
+            request.setBankName(settlement.getBankName());
+        }
+        request.setRemark(detail.getRemark() != null ? detail.getRemark() : "分账打款");
+        request.setSourceType("SETTLEMENT_SPLIT");
+        request.setSourceNo(detail.getSplitDetailNo());
+        return request;
+    }
+
+    private void handleTransferResult(PaySplitDetail detail, TransferResult result) {
+        Integer newRetryCount = detail.getTransferRetryCount() == null ? 1 : detail.getTransferRetryCount() + 1;
+        String status = result.getStatus();
+
+        if (TransferResult.STATUS_SUCCESS.equals(status)) {
+            detail.setTransferStatus(TRANSFER_STATUS_SUCCESS);
+            detail.setChannelTransferNo(result.getChannelTransferNo());
+            detail.setTransferTime(result.getCompleteTime() != null ? result.getCompleteTime() : LocalDateTime.now());
+            detail.setTransferFailReason(null);
+            detail.setStatus(1);
+            detail.setSettleTime(detail.getTransferTime());
+            log.info("分账明细打款成功: detailId={}, transferNo={}, channelTransferNo={}",
+                    detail.getId(), detail.getTransferNo(), result.getChannelTransferNo());
+        } else if (TransferResult.STATUS_PROCESSING.equals(status)) {
+            detail.setTransferStatus(TRANSFER_STATUS_PROCESSING);
+            detail.setChannelTransferNo(result.getChannelTransferNo());
+            detail.setTransferRetryCount(newRetryCount);
+            log.info("分账明细打款处理中: detailId={}, transferNo={}, channelTransferNo={}",
+                    detail.getId(), detail.getTransferNo(), result.getChannelTransferNo());
+        } else {
+            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
+            detail.setTransferFailReason(result.getFailReason());
+            detail.setTransferRetryCount(newRetryCount);
+            if (newRetryCount < MAX_RETRY_COUNT) {
+                detail.setNextTransferRetryTime(calculateNextRetryTime(newRetryCount));
+            }
+            log.warn("分账明细打款失败: detailId={}, transferNo={}, retryCount={}, failReason={}",
+                    detail.getId(), detail.getTransferNo(), newRetryCount, result.getFailReason());
+        }
+
+        paySplitDetailMapper.updateById(detail);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void checkAndUpdateSettlementStatus(Long settlementId) {
+        SettlementRecord settlement = this.getById(settlementId);
+        if (settlement == null) {
+            log.warn("结算记录不存在, settlementId={}", settlementId);
+            return;
+        }
+
+        LambdaQueryWrapper<PaySplitDetail> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PaySplitDetail::getSettlementId, settlementId);
+        List<PaySplitDetail> details = paySplitDetailMapper.selectList(wrapper);
+
+        if (details.isEmpty()) {
+            return;
+        }
+
+        int totalCount = details.size();
+        int successCount = 0;
+        int processingCount = 0;
+        int failCount = 0;
+        int pendingCount = 0;
+        StringBuilder failReasons = new StringBuilder();
+
+        for (PaySplitDetail detail : details) {
+            Integer status = detail.getTransferStatus();
+            if (status == null) {
+                pendingCount++;
+            } else {
+                switch (status) {
+                    case 2:
+                        successCount++;
+                        break;
+                    case 1:
+                        processingCount++;
+                        break;
+                    case 3:
+                        failCount++;
+                        if (detail.getTransferFailReason() != null) {
+                            if (failReasons.length() > 0) {
+                                failReasons.append("; ");
+                            }
+                            failReasons.append(detail.getSplitDetailNo()).append(":").append(detail.getTransferFailReason());
+                        }
+                        break;
+                    default:
+                        pendingCount++;
+                        break;
+                }
+            }
+        }
+
+        Integer oldStatus = settlement.getSettleStatus();
+        String oldFailReason = settlement.getFailReason();
+        Integer newStatus;
+        String newFailReason = oldFailReason;
+        boolean needUpdate = false;
+
+        if (successCount == totalCount) {
+            newStatus = 2;
+            if (settlement.getSettleTime() == null) {
+                settlement.setSettleTime(LocalDateTime.now());
+                needUpdate = true;
+            }
+            newFailReason = null;
+            log.info("结算全部打款成功: settlementId={}, settlementNo={}, count={}",
+                    settlementId, settlement.getSettlementNo(), totalCount);
+        } else if (processingCount > 0 || pendingCount > 0) {
+            newStatus = 1;
+            if (failCount > 0) {
+                newFailReason = "部分明细打款失败待重试: " + failReasons;
+            }
+            log.info("结算部分处理中: settlementId={}, settlementNo={}, success={}, processing={}, fail={}, pending={}",
+                    settlementId, settlement.getSettlementNo(), successCount, processingCount, failCount, pendingCount);
+        } else if (successCount > 0 && failCount > 0) {
+            newStatus = 1;
+            newFailReason = "部分打款成功，部分失败: " + failReasons;
+            if (settlement.getSettleTime() == null) {
+                settlement.setSettleTime(LocalDateTime.now());
+                needUpdate = true;
+            }
+            log.warn("结算部分成功部分失败: settlementId={}, settlementNo={}, success={}, fail={}",
+                    settlementId, settlement.getSettlementNo(), successCount, failCount);
+        } else {
+            newStatus = 3;
+            newFailReason = "全部明细打款失败: " + failReasons;
+            log.error("结算全部打款失败: settlementId={}, settlementNo={}, failCount={}",
+                    settlementId, settlement.getSettlementNo(), failCount);
+        }
+
+        if (!newStatus.equals(oldStatus)) {
+            settlement.setSettleStatus(newStatus);
+            needUpdate = true;
+        }
+        if ((newFailReason == null && oldFailReason != null)
+                || (newFailReason != null && !newFailReason.equals(oldFailReason))) {
+            settlement.setFailReason(newFailReason);
+            needUpdate = true;
+        }
+
+        if (needUpdate) {
+            this.updateById(settlement);
+            log.info("结算状态更新: settlementId={}, {} -> {}, failReason={}",
+                    settlementId, oldStatus, newStatus, newFailReason);
+        }
     }
 
     private LocalDateTime calculateNextRetryTime(int retryCount) {
@@ -268,31 +473,32 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void retryFailedSettlement() {
-        log.info("手动触发重试所有失败结算");
+        log.info("手动触发重试所有失败的分账打款明细");
 
-        LambdaQueryWrapper<SettlementRecord> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SettlementRecord::getSettleStatus, 3)
-                .lt(SettlementRecord::getRetryCount, MAX_RETRY_COUNT);
+        LambdaQueryWrapper<PaySplitDetail> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_FAIL)
+                .and(w -> w.lt(PaySplitDetail::getTransferRetryCount, MAX_RETRY_COUNT)
+                        .or().isNull(PaySplitDetail::getTransferRetryCount));
 
-        List<SettlementRecord> records = this.list(wrapper);
-        if (records.isEmpty()) {
-            log.info("没有可重试的失败结算记录");
+        List<PaySplitDetail> details = paySplitDetailMapper.selectList(wrapper);
+        if (details.isEmpty()) {
+            log.info("没有可重试的分账打款失败明细");
             return;
         }
 
-        log.info("待重试结算记录数量: {}", records.size());
+        log.info("待重试分账打款明细数量: {}", details.size());
 
-        for (SettlementRecord record : records) {
+        for (PaySplitDetail detail : details) {
             try {
-                record.setNextRetryTime(LocalDateTime.now());
-                this.updateById(record);
-                processSettlement(record);
+                detail.setNextTransferRetryTime(LocalDateTime.now());
+                paySplitDetailMapper.updateById(detail);
+                processSplitDetailTransfer(detail);
             } catch (Exception e) {
-                log.error("重试结算记录异常, id={}", record.getId(), e);
+                log.error("重试分账打款明细异常, id={}", detail.getId(), e);
             }
         }
 
-        log.info("手动重试失败结算完成");
+        log.info("手动重试分账打款失败明细完成");
     }
 
     @Override
@@ -337,18 +543,39 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
         if (record == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "结算记录不存在");
         }
-        if (record.getSettleStatus() != 3) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "只有失败状态的记录才能重试");
-        }
-        if (record.getRetryCount() != null && record.getRetryCount() >= MAX_RETRY_COUNT) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "已达最大重试次数");
+
+        log.info("重试单个结算下的分账明细打款: id={}, settlementNo={}", id, record.getSettlementNo());
+
+        LambdaQueryWrapper<PaySplitDetail> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PaySplitDetail::getSettlementId, id)
+                .and(w -> w.eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_FAIL)
+                        .or().eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_PENDING)
+                        .or().isNull(PaySplitDetail::getTransferStatus));
+
+        List<PaySplitDetail> details = paySplitDetailMapper.selectList(wrapper);
+        if (details.isEmpty()) {
+            log.info("结算 {} 下没有可重试的分账打款明细", record.getSettlementNo());
+            return;
         }
 
-        log.info("重试单个结算: id={}, settlementNo={}", id, record.getSettlementNo());
+        int retryCount = 0;
+        for (PaySplitDetail detail : details) {
+            Integer detailRetryCount = detail.getTransferRetryCount();
+            if (detailRetryCount != null && detailRetryCount >= MAX_RETRY_COUNT) {
+                log.warn("分账明细 {} 已达最大重试次数, 跳过", detail.getSplitDetailNo());
+                continue;
+            }
+            try {
+                detail.setNextTransferRetryTime(LocalDateTime.now());
+                paySplitDetailMapper.updateById(detail);
+                processSplitDetailTransfer(detail);
+                retryCount++;
+            } catch (Exception e) {
+                log.error("重试分账打款明细异常, id={}", detail.getId(), e);
+            }
+        }
 
-        record.setNextRetryTime(LocalDateTime.now());
-        this.updateById(record);
-        processSettlement(record);
+        log.info("结算 {} 重试完成, 共触发{}条分账明细打款", record.getSettlementNo(), retryCount);
     }
 
     private SettlementVO convertToVO(SettlementRecord record) {
