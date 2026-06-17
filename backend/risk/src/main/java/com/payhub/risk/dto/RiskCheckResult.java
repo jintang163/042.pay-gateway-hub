@@ -25,4 +25,14 @@ public class RiskCheckResult implements Serializable {
     private String riskDesc;
 
     private String suggestion;
+
+    private Boolean auditRequired;
+
+    private Long auditId;
+
+    private Boolean smsRequired;
+
+    private String smsMobile;
+
+    private Boolean whitelisted;
 }

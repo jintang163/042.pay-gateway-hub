@@ -20,4 +20,8 @@ public interface RiskControlService extends IService<RiskControlLog> {
     void removeIpFromBlacklist(String ip);
 
     boolean isIpInBlacklist(String ip);
+
+    Map<String, Object> getDashboardStats();
+
+    RiskLogVO getRiskLogById(Long id);
 }

@@ -42,6 +42,10 @@ public class RiskControlLog implements Serializable {
 
     private String handleDesc;
 
+    private Integer auditStatus;
+
+    private Long auditId;
+
     private LocalDateTime triggerTime;
 
     @TableField(fill = FieldFill.INSERT)

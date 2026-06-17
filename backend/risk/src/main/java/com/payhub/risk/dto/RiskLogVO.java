@@ -44,6 +44,12 @@ public class RiskLogVO implements Serializable {
 
     private String handleDesc;
 
+    private Integer auditStatus;
+
+    private String auditStatusDesc;
+
+    private Long auditId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime triggerTime;
 

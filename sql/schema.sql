@@ -246,24 +246,212 @@ CREATE TABLE IF NOT EXISTS `settlement_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='结算记录表';
 
 -- -----------------------------------------------
--- 8. 风控日志表
+-- 8. 风控规则表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `risk_rule` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `rule_code` VARCHAR(64) NOT NULL COMMENT '规则编码',
+  `rule_name` VARCHAR(128) NOT NULL COMMENT '规则名称',
+  `rule_type` VARCHAR(32) NOT NULL COMMENT '规则类型：AMOUNT金额/FREQUENCY频率/IP黑名单/DEVICE设备/BEHAVIOR行为',
+  `risk_level` TINYINT NOT NULL DEFAULT 1 COMMENT '风险等级：1低 2中 3高',
+  `rule_condition` TEXT NOT NULL COMMENT '规则条件（JSON格式参数）',
+  `rule_content` TEXT COMMENT 'Drools规则内容',
+  `action_type` VARCHAR(32) NOT NULL DEFAULT 'BLOCK' COMMENT '命中动作：PASS放行/BLOCK拦截/SMS短信验证/MANUAL人工审核',
+  `sms_template_id` VARCHAR(64) DEFAULT NULL COMMENT '短信模板ID（短信验证时使用）',
+  `priority` INT NOT NULL DEFAULT 100 COMMENT '优先级：数字越小优先级越高',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0禁用 1启用',
+  `effect_start_time` DATETIME DEFAULT NULL COMMENT '生效开始时间',
+  `effect_end_time` DATETIME DEFAULT NULL COMMENT '生效结束时间',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rule_code` (`rule_code`),
+  KEY `idx_rule_type` (`rule_type`),
+  KEY `idx_risk_level` (`risk_level`),
+  KEY `idx_status` (`status`),
+  KEY `idx_priority` (`priority`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控规则表';
+
+-- -----------------------------------------------
+-- 9. 黑名单表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `risk_blacklist` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `list_type` VARCHAR(32) NOT NULL COMMENT '类型：IP/USER/MERCHANT/DEVICE',
+  `list_value` VARCHAR(256) NOT NULL COMMENT '值（IP地址/用户ID/商户号/设备指纹）',
+  `list_source` VARCHAR(32) NOT NULL DEFAULT 'MANUAL' COMMENT '来源：MANUAL手动/SYSTEM系统/AUDIT审核/RISK风控命中',
+  `risk_level` TINYINT NOT NULL DEFAULT 2 COMMENT '关联风险等级：1低 2中 3高',
+  `reason` VARCHAR(512) DEFAULT NULL COMMENT '加入原因',
+  `operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0无效 1有效',
+  `expire_time` DATETIME DEFAULT NULL COMMENT '过期时间（null表示永久有效）',
+  `hit_count` INT NOT NULL DEFAULT 0 COMMENT '命中次数',
+  `last_hit_time` DATETIME DEFAULT NULL COMMENT '最后命中时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_type_value` (`list_type`, `list_value`),
+  KEY `idx_list_type` (`list_type`),
+  KEY `idx_status` (`status`),
+  KEY `idx_expire_time` (`expire_time`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控黑名单表';
+
+-- -----------------------------------------------
+-- 10. 白名单表（免检）
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `risk_whitelist` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `list_type` VARCHAR(32) NOT NULL COMMENT '类型：IP/USER/MERCHANT/DEVICE',
+  `list_value` VARCHAR(256) NOT NULL COMMENT '值（IP地址/用户ID/商户号/设备指纹）',
+  `list_source` VARCHAR(32) NOT NULL DEFAULT 'MANUAL' COMMENT '来源：MANUAL手动/SYSTEM系统/AUDIT审核',
+  `bypass_rules` VARCHAR(512) DEFAULT NULL COMMENT '免检规则编码（逗号分隔，空表示全部免检）',
+  `reason` VARCHAR(512) DEFAULT NULL COMMENT '加入原因',
+  `operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0无效 1有效',
+  `expire_time` DATETIME DEFAULT NULL COMMENT '过期时间（null表示永久有效）',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_type_value` (`list_type`, `list_value`),
+  KEY `idx_list_type` (`list_type`),
+  KEY `idx_status` (`status`),
+  KEY `idx_expire_time` (`expire_time`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控白名单表（免检）';
+
+-- -----------------------------------------------
+-- 11. 设备指纹表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `risk_device_fingerprint` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `device_id` VARCHAR(128) NOT NULL COMMENT '设备唯一标识',
+  `device_type` VARCHAR(32) DEFAULT NULL COMMENT '设备类型：MOBILE/DESKTOP/TABLET',
+  `os_type` VARCHAR(32) DEFAULT NULL COMMENT '操作系统：IOS/ANDROID/WINDOWS/MAC/LINUX',
+  `os_version` VARCHAR(64) DEFAULT NULL COMMENT '系统版本',
+  `browser_type` VARCHAR(32) DEFAULT NULL COMMENT '浏览器类型',
+  `browser_version` VARCHAR(64) DEFAULT NULL COMMENT '浏览器版本',
+  `app_version` VARCHAR(64) DEFAULT NULL COMMENT 'APP版本',
+  `screen_resolution` VARCHAR(32) DEFAULT NULL COMMENT '屏幕分辨率',
+  `language` VARCHAR(32) DEFAULT NULL COMMENT '语言设置',
+  `timezone` VARCHAR(32) DEFAULT NULL COMMENT '时区',
+  `user_agent` VARCHAR(1024) DEFAULT NULL COMMENT 'User Agent',
+  `user_identity` VARCHAR(128) DEFAULT NULL COMMENT '关联用户标识',
+  `merchant_no` VARCHAR(32) DEFAULT NULL COMMENT '关联商户号',
+  `first_seen_ip` VARCHAR(64) DEFAULT NULL COMMENT '首次出现IP',
+  `last_seen_ip` VARCHAR(64) DEFAULT NULL COMMENT '最后出现IP',
+  `first_seen_time` DATETIME DEFAULT NULL COMMENT '首次出现时间',
+  `last_seen_time` DATETIME DEFAULT NULL COMMENT '最后出现时间',
+  `total_request_count` BIGINT NOT NULL DEFAULT 0 COMMENT '总请求次数',
+  `risk_score` INT NOT NULL DEFAULT 0 COMMENT '风险评分 0-100',
+  `risk_tags` VARCHAR(512) DEFAULT NULL COMMENT '风险标签（逗号分隔）',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0标记异常 1正常',
+  `extra_info` JSON DEFAULT NULL COMMENT '扩展信息（JSON）',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_device_id` (`device_id`),
+  KEY `idx_user_identity` (`user_identity`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_risk_score` (`risk_score`),
+  KEY `idx_status` (`status`),
+  KEY `idx_last_seen_time` (`last_seen_time`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备指纹表';
+
+-- -----------------------------------------------
+-- 12. 风控审核记录表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `risk_audit_record` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `audit_no` VARCHAR(64) NOT NULL COMMENT '审核单号',
+  `risk_log_id` BIGINT NOT NULL COMMENT '关联风控日志ID',
+  `merchant_no` VARCHAR(32) DEFAULT NULL COMMENT '商户编号',
+  `order_no` VARCHAR(64) DEFAULT NULL COMMENT '订单号',
+  `audit_type` VARCHAR(32) NOT NULL COMMENT '审核类型：BLOCK拦截审核/SMS验证审核/RISK_ALERT风险告警审核',
+  `audit_level` TINYINT NOT NULL DEFAULT 1 COMMENT '审核级别：1一审 2二审',
+  `audit_status` TINYINT NOT NULL DEFAULT 0 COMMENT '审核状态：0待审核 1审核通过（放行） 2审核拒绝（拦截） 3需要二审',
+  `risk_level_before` TINYINT DEFAULT NULL COMMENT '审核前风险等级',
+  `risk_level_after` TINYINT DEFAULT NULL COMMENT '审核后风险等级',
+  `audit_result` VARCHAR(32) DEFAULT NULL COMMENT '审核结果：PASS放行/BLOCK拦截',
+  `audit_remark` VARCHAR(1024) DEFAULT NULL COMMENT '审核意见',
+  `audit_user_id` VARCHAR(64) DEFAULT NULL COMMENT '审核人ID',
+  `audit_user_name` VARCHAR(64) DEFAULT NULL COMMENT '审核人姓名',
+  `audit_time` DATETIME DEFAULT NULL COMMENT '审核时间',
+  `sms_verified` TINYINT NOT NULL DEFAULT 0 COMMENT '是否已短信验证：0否 1是',
+  `sms_mobile` VARCHAR(20) DEFAULT NULL COMMENT '短信验证手机号',
+  `sms_verify_time` DATETIME DEFAULT NULL COMMENT '短信验证时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_audit_no` (`audit_no`),
+  KEY `idx_risk_log_id` (`risk_log_id`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_audit_status` (`audit_status`),
+  KEY `idx_audit_user_id` (`audit_user_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控审核记录表';
+
+-- -----------------------------------------------
+-- 13. 风控日志表（增强版）
 -- -----------------------------------------------
 CREATE TABLE IF NOT EXISTS `risk_control_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
   `order_no` VARCHAR(64) DEFAULT NULL COMMENT '订单号',
   `risk_type` VARCHAR(64) NOT NULL COMMENT '风控类型',
-  `risk_level` TINYINT NOT NULL DEFAULT 0 COMMENT '风险等级：0低 1中 2高',
+  `risk_level` TINYINT NOT NULL DEFAULT 0 COMMENT '风险等级：0无风险 1低 2中 3高',
+  `risk_rule` VARCHAR(512) DEFAULT NULL COMMENT '命中的规则编码（逗号分隔）',
   `risk_desc` VARCHAR(1024) DEFAULT NULL COMMENT '风险描述',
-  `handle_result` VARCHAR(512) DEFAULT NULL COMMENT '处理结果',
+  `client_ip` VARCHAR(64) DEFAULT NULL COMMENT '客户端IP',
+  `user_identity` VARCHAR(128) DEFAULT NULL COMMENT '用户标识',
+  `device_id` VARCHAR(128) DEFAULT NULL COMMENT '设备指纹ID',
+  `pay_amount` DECIMAL(18,2) DEFAULT NULL COMMENT '支付金额',
+  `pay_channel` VARCHAR(32) DEFAULT NULL COMMENT '支付渠道',
+  `pay_type` VARCHAR(32) DEFAULT NULL COMMENT '支付方式',
+  `request_params` TEXT DEFAULT NULL COMMENT '请求参数（JSON）',
+  `action_type` VARCHAR(32) NOT NULL DEFAULT 'PASS' COMMENT '执行动作：PASS放行/BLOCK拦截/SMS短信验证/MANUAL人工审核',
+  `handle_result` TINYINT DEFAULT NULL COMMENT '处理结果：0拦截 1通过 2待审核',
+  `handle_desc` VARCHAR(512) DEFAULT NULL COMMENT '处理描述',
+  `audit_status` TINYINT DEFAULT 0 COMMENT '审核状态：0无需审核 1待审核 2审核通过 3审核拒绝',
+  `audit_id` BIGINT DEFAULT NULL COMMENT '关联审核记录ID',
+  `trigger_time` DATETIME DEFAULT NULL COMMENT '触发时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
   PRIMARY KEY (`id`),
   KEY `idx_merchant_no` (`merchant_no`),
   KEY `idx_order_no` (`order_no`),
   KEY `idx_risk_type` (`risk_type`),
   KEY `idx_risk_level` (`risk_level`),
+  KEY `idx_client_ip` (`client_ip`),
+  KEY `idx_user_identity` (`user_identity`),
+  KEY `idx_action_type` (`action_type`),
+  KEY `idx_audit_status` (`audit_status`),
+  KEY `idx_trigger_time` (`trigger_time`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控日志表';
+
+-- -----------------------------------------------
+-- 初始化风控规则数据
+-- -----------------------------------------------
+INSERT INTO `risk_rule` (`rule_code`, `rule_name`, `rule_type`, `risk_level`, `rule_condition`, `rule_content`, `action_type`, `priority`, `status`, `remark`, `created_at`, `updated_at`) VALUES
+('SINGLE_AMOUNT_LIMIT', '单笔金额超限规则', 'AMOUNT', 2, '{"maxAmount": 5000000}', NULL, 'BLOCK', 10, 1, '单笔金额超过5万元触发中风险拦截', NOW(), NOW()),
+('DAILY_AMOUNT_LIMIT', '日累计金额超限规则', 'AMOUNT', 2, '{"minAmount": 50000000}', NULL, 'MANUAL', 20, 1, '日累计金额超过50万元触发人工审核', NOW(), NOW()),
+('IP_FREQUENCY_LIMIT', 'IP高频请求规则', 'FREQUENCY', 2, '{"windowSeconds": 60, "maxCount": 100}', NULL, 'MANUAL', 30, 1, '同一IP+商户1分钟内请求超过100次需人工审核', NOW(), NOW()),
+('IP_BLACKLIST_RULE', 'IP黑名单规则', 'IP_BLACKLIST', 3, '{}', NULL, 'BLOCK', 5, 1, 'IP在黑名单中直接拦截', NOW(), NOW()),
+('DEVICE_HIGH_RISK', '高风险设备规则', 'DEVICE', 3, '{"minRiskScore": 80}', NULL, 'SMS', 15, 1, '设备风险评分≥80需要短信二次验证', NOW(), NOW()),
+('DEVICE_MEDIUM_RISK', '中风险设备规则', 'DEVICE', 2, '{"minRiskScore": 60}', NULL, 'MANUAL', 25, 0, '设备风险评分≥60需要人工审核（默认禁用）', NOW(), NOW()),
+('LARGE_AMOUNT_NO_USER', '大额无身份验证交易', 'BEHAVIOR', 3, '{"customCondition": "payAmount != null && payAmount.compareTo(new java.math.BigDecimal(100000)) > 0 && (userIdentity == null || userIdentity.trim().length() == 0)"}', NULL, 'MANUAL', 50, 1, '超过1万元且无用户身份的交易需人工审核', NOW(), NOW());
 
 -- -----------------------------------------------
 -- 9. 对账记录表

@@ -13,6 +13,9 @@ const OrderList = lazy(() => import('@/pages/OrderList'));
 const RefundList = lazy(() => import('@/pages/RefundList'));
 const Settlement = lazy(() => import('@/pages/Settlement'));
 const RiskMonitor = lazy(() => import('@/pages/RiskMonitor'));
+const RiskRuleConfig = lazy(() => import('@/pages/RiskRuleConfig'));
+const RiskListManage = lazy(() => import('@/pages/RiskListManage'));
+const RiskAudit = lazy(() => import('@/pages/RiskAudit'));
 const SandboxTest = lazy(() => import('@/pages/SandboxTest'));
 const ApiStats = lazy(() => import('@/pages/ApiStats'));
 
@@ -76,9 +79,30 @@ export const routesConfig: RouteConfigItem[] = [
   },
   {
     path: 'risk',
-    name: '风控监控',
+    name: '风控管理',
     icon: 'AlertOutlined',
-    element: <RiskMonitor />,
+    children: [
+      {
+        path: 'monitor',
+        name: '风控监控',
+        element: <RiskMonitor />,
+      },
+      {
+        path: 'rules',
+        name: '规则配置',
+        element: <RiskRuleConfig />,
+      },
+      {
+        path: 'lists',
+        name: '黑白名单',
+        element: <RiskListManage />,
+      },
+      {
+        path: 'audit',
+        name: '风控审核',
+        element: <RiskAudit />,
+      },
+    ],
   },
   {
     path: 'sandbox',
