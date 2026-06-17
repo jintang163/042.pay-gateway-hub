@@ -1,6 +1,6 @@
 package com.payhub.pay.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.payhub.channel.dto.NotifyResult;
+import com.payhub.channel.dto.UnifiedOrderResponse;
 import com.payhub.channel.strategy.PayChannelStrategy;
 import com.payhub.channel.strategy.PayChannelStrategyFactory;
 import com.payhub.common.enums.PayStatusEnum;
@@ -15,6 +16,11 @@ import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.HttpUtil;
 import com.payhub.common.utils.OrderNoGenerator;
+import com.payhub.common.utils.SignUtil;
+import com.payhub.common.utils.Sm4Util;
+import com.payhub.merchant.entity.MerchantInfo;
+import com.payhub.merchant.mapper.MerchantInfoMapper;
+import com.payhub.merchant.service.MerchantInfoService;
 import com.payhub.pay.dto.*;
 import com.payhub.pay.entity.MerchantPayConfig;
 import com.payhub.pay.entity.PayOrder;
@@ -23,22 +29,36 @@ import com.payhub.pay.service.PayOrderService;
 import com.payhub.pay.service.PayRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> implements PayOrderService {
+
+    private static final String DEFAULT_MERCHANT_SECRET = "payhub_default_secret_key_2024";
+    private static final String DEFAULT_SIGN_TYPE = "MD5";
 
     @Autowired
     private PayRouterService payRouterService;
 
     @Autowired
     private PayChannelStrategyFactory payChannelStrategyFactory;
+
+    @Autowired
+    private MerchantInfoService merchantInfoService;
+
+    @Autowired
+    private MerchantInfoMapper merchantInfoMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -78,7 +98,7 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
         order.setPayAmount(request.getPayAmount());
         order.setActualAmount(actualAmount);
         order.setFeeAmount(feeAmount);
-        order.setPayChannel(request.getPayChannel());
+        order.setPayChannel(config.getChannelCode());
         order.setPayType(request.getPayType());
         order.setUserIdentity(request.getUserIdentity());
         order.setProductSubject(request.getProductSubject());
@@ -91,14 +111,79 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
 
         this.save(order);
 
-        log.info("支付订单创建成功: orderNo={}, merchantNo={}, amount={}", orderNo, request.getMerchantNo(), request.getPayAmount());
+        log.info("支付订单创建成功: orderNo={}, merchantNo={}, amount={}, channel={}", 
+                orderNo, request.getMerchantNo(), request.getPayAmount(), config.getChannelCode());
+
+        com.payhub.channel.dto.UnifiedOrderRequest channelRequest = buildChannelRequest(order, config);
+        PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(config.getChannelCode());
+        UnifiedOrderResponse channelResponse = strategy.unifiedOrder(channelRequest);
+
+        if (channelResponse == null || !channelResponse.isSuccess()) {
+            String errorMsg = channelResponse != null ? channelResponse.getMsg() : "通道下单失败";
+            log.error("通道下单失败, orderNo={}, channel={}, error={}", 
+                    orderNo, config.getChannelCode(), errorMsg);
+            order.setPayStatus(PayStatusEnum.FAIL.getCode());
+            this.updateById(order);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "支付通道下单失败: " + errorMsg);
+        }
+
+        order.setChannelTradeNo(channelResponse.getChannelTradeNo());
+        this.updateById(order);
+
+        log.info("通道下单成功: orderNo={}, channelTradeNo={}, channel={}", 
+                orderNo, channelResponse.getChannelTradeNo(), config.getChannelCode());
+
+        String finalPayParams = buildFinalPayParams(channelResponse.getPayType(), channelResponse.getPayParams(), order);
 
         return UnifiedOrderResponse.builder()
                 .orderNo(orderNo)
-                .payType(request.getPayType())
-                .payParams(buildPayParams(order, config))
+                .payType(channelResponse.getPayType())
+                .payParams(finalPayParams)
                 .payStatus(PayStatusEnum.PENDING.getCode())
                 .build();
+    }
+
+    private String buildFinalPayParams(String payType, String channelPayParams, PayOrder order) {
+        if (StrUtil.isBlank(channelPayParams)) {
+            return channelPayParams;
+        }
+        try {
+            Map<String, Object> params = JSON.parseObject(channelPayParams, Map.class);
+            if (params != null && params.get("expireTime") == null && order.getExpireTime() != null) {
+                params.put("expireTime", order.getExpireTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            }
+            return JSON.toJSONString(params);
+        } catch (Exception e) {
+            return channelPayParams;
+        }
+    }
+
+    private com.payhub.channel.dto.UnifiedOrderRequest buildChannelRequest(PayOrder order, MerchantPayConfig config) {
+        com.payhub.channel.dto.UnifiedOrderRequest channelRequest = new com.payhub.channel.dto.UnifiedOrderRequest();
+        channelRequest.setMerchantNo(order.getMerchantNo());
+        channelRequest.setOrderNo(order.getOrderNo());
+        channelRequest.setAmount(order.getPayAmount());
+        channelRequest.setSubject(order.getProductSubject());
+        channelRequest.setDetail(order.getProductDetail());
+        channelRequest.setUserIdentity(order.getUserIdentity());
+        channelRequest.setClientIp(order.getClientIp());
+        channelRequest.setPayType(order.getPayType());
+        channelRequest.setNotifyUrl(buildChannelNotifyUrl(config.getChannelCode()));
+
+        if (StrUtil.isNotBlank(order.getExtraParams())) {
+            try {
+                Map<String, String> extraParamsMap = JSON.parseObject(order.getExtraParams(), Map.class);
+                channelRequest.setExtraParams(extraParamsMap);
+            } catch (Exception e) {
+                log.warn("解析额外参数失败, orderNo={}, extraParams={}", order.getOrderNo(), order.getExtraParams());
+            }
+        }
+
+        return channelRequest;
+    }
+
+    private String buildChannelNotifyUrl(String channelCode) {
+        return "/api/pay/notify/" + channelCode.toLowerCase();
     }
 
     @Override
@@ -142,10 +227,6 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             fee = maxFee;
         }
         return fee;
-    }
-
-    private String buildPayParams(PayOrder order, MerchantPayConfig config) {
-        return JSON.toJSONString(BeanUtil.beanToMap(order));
     }
 
     @Override
@@ -237,29 +318,120 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             this.updateById(order);
             log.info("订单支付成功, orderNo={}, channelTradeNo={}", order.getOrderNo(), notifyResult.getChannelTradeNo());
 
-            notifyMerchant(order);
+            notifyMerchantAsync(order);
         } else if ("FAIL".equalsIgnoreCase(notifyResult.getPayStatus())
                 || PayStatusEnum.FAIL.getCode().toString().equals(notifyResult.getPayStatus())) {
             order.setPayStatus(PayStatusEnum.FAIL.getCode());
             this.updateById(order);
             log.info("订单支付失败, orderNo={}", order.getOrderNo());
 
-            notifyMerchant(order);
+            notifyMerchantAsync(order);
         }
 
         return "success";
     }
 
+    @Async
+    public void notifyMerchantAsync(PayOrder order) {
+        notifyMerchant(order);
+    }
+
     private void notifyMerchant(PayOrder order) {
         if (StrUtil.isBlank(order.getNotifyUrl())) {
+            log.info("商户通知地址为空, 跳过通知, orderNo={}", order.getOrderNo());
             return;
         }
         try {
-            Map<String, Object> notifyParams = BeanUtil.beanToMap(order);
+            Map<String, Object> notifyParams = buildNotifyParams(order);
+            String merchantSecret = getMerchantSecret(order.getMerchantNo());
+            String sign = SignUtil.sign(notifyParams, DEFAULT_SIGN_TYPE, merchantSecret, null, null);
+            notifyParams.put("sign", sign);
+            notifyParams.put("signType", DEFAULT_SIGN_TYPE);
+
+            log.info("通知商户, orderNo={}, notifyUrl={}, params={}", order.getOrderNo(), order.getNotifyUrl(), notifyParams);
+
             String response = HttpUtil.postJson(order.getNotifyUrl(), notifyParams);
+
             log.info("通知商户结果, orderNo={}, response={}", order.getOrderNo(), response);
+
+            if (response == null || !"success".equalsIgnoreCase(response.trim())) {
+                log.warn("商户通知响应异常, orderNo={}, response={}", order.getOrderNo(), response);
+            }
         } catch (Exception e) {
             log.error("通知商户失败, orderNo={}, notifyUrl={}", order.getOrderNo(), order.getNotifyUrl(), e);
         }
+    }
+
+    private String getMerchantSecret(String merchantNo) {
+        try {
+            LambdaQueryWrapper<MerchantInfo> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(MerchantInfo::getMerchantNo, merchantNo)
+                    .last("LIMIT 1");
+            MerchantInfo merchantInfo = merchantInfoMapper.selectOne(wrapper);
+            if (merchantInfo != null && StrUtil.isNotBlank(merchantInfo.getApiKeyMd5())) {
+                String secret = Sm4Util.decrypt(merchantInfo.getApiKeyMd5());
+                if (StrUtil.isNotBlank(secret)) {
+                    return secret;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取商户密钥失败, merchantNo={}, 使用默认密钥", merchantNo, e);
+        }
+        return DEFAULT_MERCHANT_SECRET;
+    }
+
+    @Override
+    @Async
+    public void simulateAsyncNotifyAfterDelay(PayOrder order) {
+        if (order == null || StrUtil.isBlank(order.getOrderNo())) {
+            return;
+        }
+        try {
+            long delaySeconds = RandomUtil.randomLong(1, 4);
+            log.info("沙箱环境模拟异步通知, orderNo={}, 延迟{}秒执行", order.getOrderNo(), delaySeconds);
+            TimeUnit.SECONDS.sleep(delaySeconds);
+
+            Map<String, String> notifyParams = new HashMap<>();
+            notifyParams.put("orderNo", order.getOrderNo());
+            notifyParams.put("channelTradeNo", order.getChannelTradeNo());
+            notifyParams.put("payStatus", "SUCCESS");
+            notifyParams.put("payAmount", order.getPayAmount() != null ? order.getPayAmount().toString() : "0");
+
+            String body = JSON.toJSONString(notifyParams);
+
+            log.info("沙箱环境触发模拟异步通知, orderNo={}", order.getOrderNo());
+            this.handleNotify(order.getPayChannel(), notifyParams, body);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("沙箱模拟异步通知被中断, orderNo={}", order.getOrderNo());
+        } catch (Exception e) {
+            log.error("沙箱模拟异步通知失败, orderNo={}", order.getOrderNo(), e);
+        }
+    }
+
+    private Map<String, Object> buildNotifyParams(PayOrder order) {
+        Map<String, Object> params = new TreeMap<>();
+        params.put("merchantNo", order.getMerchantNo());
+        params.put("orderNo", order.getOrderNo());
+        params.put("merchantOrderNo", order.getMerchantOrderNo());
+        params.put("payStatus", order.getPayStatus());
+        params.put("payAmount", order.getPayAmount());
+        params.put("payChannel", order.getPayChannel());
+        params.put("payType", order.getPayType());
+
+        if (order.getChannelTradeNo() != null) {
+            params.put("channelTradeNo", order.getChannelTradeNo());
+        }
+        if (order.getPayTime() != null) {
+            params.put("payTime", order.getPayTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        }
+        if (order.getActualAmount() != null) {
+            params.put("actualAmount", order.getActualAmount());
+        }
+        if (order.getFeeAmount() != null) {
+            params.put("feeAmount", order.getFeeAmount());
+        }
+
+        return params;
     }
 }

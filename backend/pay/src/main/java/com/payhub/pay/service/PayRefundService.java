@@ -10,9 +10,13 @@ import java.util.Map;
 
 public interface PayRefundService extends IService<PayRefund> {
 
-    RefundResponse applyRefund(RefundRequest request);
+    RefundResponse applyRefund(RefundRequest request, String clientIp);
 
     RefundResponse queryRefund(String refundNo);
 
     IPage<PayRefund> listPage(Long current, Long size, String merchantNo, Map<String, Object> params);
+
+    void retryRefund();
+
+    void retryRefund(String refundNo);
 }

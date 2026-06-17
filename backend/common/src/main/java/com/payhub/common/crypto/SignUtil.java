@@ -2,7 +2,7 @@ package com.payhub.common.crypto;
 
 import com.payhub.common.enums.SignTypeEnum;
 import com.payhub.common.exception.BusinessException;
-import com.payhub.common.result.ResultEnum;
+import com.payhub.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -17,7 +17,7 @@ public class SignUtil {
     public static String generateSign(Map<String, Object> params, String signType, String key) {
         SignTypeEnum signTypeEnum = SignTypeEnum.getByCode(signType);
         if (signTypeEnum == null) {
-            throw new BusinessException(ResultEnum.PARAM_ERROR, "不支持的签名类型: " + signType);
+            throw new BusinessException(ResultCode.PARAM_ERROR, "不支持的签名类型: " + signType);
         }
         String signContent = buildSignContent(params);
         return switch (signTypeEnum) {

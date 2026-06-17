@@ -47,6 +47,10 @@ public class MerchantInfo implements Serializable {
 
     private String apiKeyRsaPrivate;
 
+    private String apiKeySm2Public;
+
+    private String apiKeySm2Private;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

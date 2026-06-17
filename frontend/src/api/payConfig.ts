@@ -10,8 +10,12 @@ export const payConfigApi = {
     return request.get<PayConfig>(`/pay/config/${id}`);
   },
 
+  save: (data: PayConfigCreateRequest) => {
+    return request.post<{ id: string; configId: string }>('/pay/config/save', data);
+  },
+
   create: (data: PayConfigCreateRequest) => {
-    return request.post<{ id: string; configId: string }>('/pay/config/create', data);
+    return request.post<{ id: string; configId: string }>('/pay/config/save', data);
   },
 
   update: (id: string, data: Partial<PayConfigCreateRequest>) => {
@@ -22,12 +26,16 @@ export const payConfigApi = {
     return request.delete<void>(`/pay/config/${id}`);
   },
 
+  toggle: (id: string) => {
+    return request.post<void>(`/pay/config/${id}/toggle`);
+  },
+
   enable: (id: string) => {
-    return request.post<void>(`/pay/config/${id}/enable`);
+    return request.post<void>(`/pay/config/${id}/toggle`);
   },
 
   disable: (id: string) => {
-    return request.post<void>(`/pay/config/${id}/disable`);
+    return request.post<void>(`/pay/config/${id}/toggle`);
   },
 
   test: (id: string) => {

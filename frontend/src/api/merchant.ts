@@ -6,12 +6,16 @@ export const merchantApi = {
     return request.get<MerchantListResult>('/merchant/list', params);
   },
 
-  detail: (id: string) => {
-    return request.get<Merchant>(`/merchant/${id}`);
+  detail: (merchantNo: string) => {
+    return request.get<Merchant>(`/merchant/${merchantNo}`);
   },
 
   apply: (data: MerchantApplyRequest) => {
     return request.post<{ merchantId: string; merchantNo: string }>('/merchant/apply', data);
+  },
+
+  audit: (data: { merchantNo: string; status: string; remark?: string }) => {
+    return request.post<void>('/merchant/audit', data);
   },
 
   approve: (id: string) => {
@@ -36,5 +40,13 @@ export const merchantApi = {
 
   update: (id: string, data: Partial<Merchant>) => {
     return request.put<void>(`/merchant/${id}`, data);
+  },
+
+  resetApiKey: (merchantNo: string) => {
+    return request.post<{ apiKey: string }>('/merchant/resetApiKey', { merchantNo });
+  },
+
+  testCallback: (data: { merchantNo: string; callbackUrl: string; type?: string }) => {
+    return request.post<{ success: boolean; message: string }>('/merchant/testCallback', data);
   },
 };

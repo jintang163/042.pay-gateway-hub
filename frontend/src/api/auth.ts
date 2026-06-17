@@ -6,6 +6,10 @@ export const authApi = {
     return request.post<LoginResponse>('/merchant/user/login', data);
   },
 
+  register: (data: { username: string; password: string; merchantName: string; contact?: string; phone?: string; email?: string }) => {
+    return request.post<{ id: string; merchantNo: string }>('/merchant/user/register', data);
+  },
+
   logout: () => {
     return request.post<void>('/merchant/user/logout');
   },

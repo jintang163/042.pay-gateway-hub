@@ -3,34 +3,38 @@ import type { Order, OrderQueryParams, OrderListResult, OrderDetail } from '@/ty
 
 export const orderApi = {
   list: (params: OrderQueryParams) => {
-    return request.get<OrderListResult>('/pay/order/list', params);
+    return request.get<OrderListResult>('/api/pay/order/list', params);
   },
 
-  detail: (id: string) => {
-    return request.get<OrderDetail>(`/pay/order/${id}`);
+  detail: (orderNo: string) => {
+    return request.get<OrderDetail>(`/api/pay/order/${orderNo}`);
   },
 
-  detailByOrderNo: (orderNo: string) => {
-    return request.get<OrderDetail>('/pay/order/detail', { orderNo });
+  query: (data: { orderNo?: string; outTradeNo?: string }) => {
+    return request.post<OrderDetail>('/api/pay/query', data);
+  },
+
+  unifiedOrder: (data: Partial<Order>) => {
+    return request.post<{ id: string; orderNo: string; payUrl?: string }>('/api/pay/unifiedorder', data);
   },
 
   create: (data: Partial<Order>) => {
-    return request.post<{ id: string; orderNo: string; payUrl?: string }>('/pay/order/create', data);
+    return request.post<{ id: string; orderNo: string; payUrl?: string }>('/api/pay/unifiedorder', data);
   },
 
   close: (id: string) => {
-    return request.post<void>(`/pay/order/${id}/close`);
+    return request.post<void>(`/api/pay/order/${id}/close`);
   },
 
   refund: (id: string, data: { refundAmount: number; reason: string }) => {
-    return request.post<{ refundId: string; refundNo: string }>(`/pay/refund/apply`, { orderId: id, ...data });
+    return request.post<{ refundId: string; refundNo: string }>('/api/pay/refund/apply', { orderId: id, ...data });
   },
 
   export: (params: Partial<OrderQueryParams>) => {
-    return request.download('/pay/order/export', params);
+    return request.download('/api/pay/order/export', params);
   },
 
   getStatusStats: () => {
-    return request.get<{ status: string; count: number }[]>('/pay/order/status-stats');
+    return request.get<{ status: string; count: number }[]>('/api/pay/order/status-stats');
   },
 };

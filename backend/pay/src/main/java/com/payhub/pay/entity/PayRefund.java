@@ -34,6 +34,10 @@ public class PayRefund implements Serializable {
 
     private String channelRefundNo;
 
+    private Integer retryCount;
+
+    private LocalDateTime nextRetryTime;
+
     private LocalDateTime refundTime;
 
     @TableField(fill = FieldFill.INSERT)

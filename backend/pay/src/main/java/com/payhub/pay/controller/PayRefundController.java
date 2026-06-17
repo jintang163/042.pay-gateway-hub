@@ -30,8 +30,32 @@ public class PayRefundController {
         if (merchantNo != null) {
             request.setMerchantNo(merchantNo);
         }
-        RefundResponse response = payRefundService.applyRefund(request);
+        String clientIp = getClientIp(httpRequest);
+        RefundResponse response = payRefundService.applyRefund(request, clientIp);
         return Result.success(response);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("HTTP_CLIENT_IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
     }
 
     @PostMapping("/query")
@@ -61,5 +85,11 @@ public class PayRefundController {
         params.put("endTime", endTime);
         IPage<PayRefund> page = payRefundService.listPage(current, size, merchantNo, params);
         return Result.success(page);
+    }
+
+    @PostMapping("/retry/{refundNo}")
+    public Result<Void> retryRefund(@PathVariable String refundNo) {
+        payRefundService.retryRefund(refundNo);
+        return Result.success();
     }
 }

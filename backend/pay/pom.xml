@@ -29,5 +29,10 @@
             <groupId>com.payhub</groupId>
             <artifactId>channel</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>com.payhub</groupId>
+            <artifactId>risk</artifactId>
+        </dependency>
     </dependencies>
 </project>

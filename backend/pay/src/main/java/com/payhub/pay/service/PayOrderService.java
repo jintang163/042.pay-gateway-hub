@@ -21,4 +21,6 @@ public interface PayOrderService extends IService<PayOrder> {
     IPage<PayOrder> listPage(Long current, Long size, String merchantNo, Map<String, Object> params);
 
     String handleNotify(String channel, Map<String, String> params, String body);
+
+    void simulateAsyncNotifyAfterDelay(PayOrder order);
 }

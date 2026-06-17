@@ -6,6 +6,17 @@ export const apiStatsApi = {
     return request.get<ApiStats>('/api-stats/overview', params);
   },
 
+  getDetail: (params: ApiStatsQueryParams) => {
+    return request.get<{ list: unknown[]; total: number }>('/api-stats/detail', params);
+  },
+
+  getTopMerchants: (params: ApiStatsQueryParams) => {
+    return request.get<{ merchantNo: string; merchantName: string; requestCount: number; successRate: number }[]>(
+      '/api-stats/top-merchants',
+      params
+    );
+  },
+
   getRequestTrend: (params: ApiStatsQueryParams) => {
     return request.get<{ time: string; successCount: number; failCount: number; avgResponseTime: number }[]>(
       '/api-stats/request-trend',

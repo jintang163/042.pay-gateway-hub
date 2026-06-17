@@ -1,7 +1,7 @@
 package com.payhub.common.exception;
 
 import com.payhub.common.result.Result;
-import com.payhub.common.result.ResultEnum;
+import com.payhub.common.result.ResultCode;
 import com.payhub.common.result.ResultUtils;
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.ConstraintViolation;
@@ -34,7 +34,7 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
         log.warn("参数校验异常 uri: {}, msg: {}", request.getRequestURI(), msg);
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, msg);
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, msg);
     }
 
     @ExceptionHandler(BindException.class)
@@ -43,7 +43,7 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
         log.warn("绑定异常 uri: {}, msg: {}", request.getRequestURI(), msg);
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, msg);
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, msg);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -52,25 +52,25 @@ public class GlobalExceptionHandler {
                 .map(ConstraintViolation::getMessage)
                 .collect(Collectors.joining(", "));
         log.warn("约束违反异常 uri: {}, msg: {}", request.getRequestURI(), msg);
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, msg);
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, msg);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public Result<Void> handleMissingServletRequestParameterException(MissingServletRequestParameterException e, HttpServletRequest request) {
         log.warn("缺少请求参数 uri: {}, param: {}", request.getRequestURI(), e.getParameterName());
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, "缺少参数: " + e.getParameterName());
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, "缺少参数: " + e.getParameterName());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public Result<Void> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
         log.warn("参数类型不匹配 uri: {}, param: {}", request.getRequestURI(), e.getName());
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, "参数类型错误: " + e.getName());
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, "参数类型错误: " + e.getName());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public Result<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException e, HttpServletRequest request) {
         log.warn("请求体不可读 uri: {}", request.getRequestURI(), e);
-        return ResultUtils.fail(ResultEnum.PARAM_ERROR, "请求体格式错误");
+        return ResultUtils.fail(ResultCode.PARAM_ERROR, "请求体格式错误");
     }
 
     @ExceptionHandler(Exception.class)

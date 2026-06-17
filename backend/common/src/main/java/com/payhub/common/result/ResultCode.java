@@ -7,6 +7,7 @@ public enum ResultCode {
 
     SUCCESS(200, "操作成功"),
     FAIL(500, "操作失败"),
+    SYSTEM_ERROR(500, "系统错误"),
     PARAM_ERROR(400, "参数错误"),
     UNAUTHORIZED(401, "未授权"),
     FORBIDDEN(403, "禁止访问"),
@@ -22,6 +23,10 @@ public enum ResultCode {
 
     SMS_CODE_ERROR(2001, "短信验证码错误"),
     SIGN_VERIFY_ERROR(2002, "签名验证失败"),
+    SIGN_PARAM_MISSING(2003, "签名参数缺失"),
+    SIGN_TIMEOUT(2004, "请求已过期"),
+    SIGN_ERROR(2005, "签名错误"),
+    SIGN_NONCE_REPEAT(2006, "重复请求"),
 
     CALLBACK_TEST_FAIL(3001, "回调测试失败"),
 

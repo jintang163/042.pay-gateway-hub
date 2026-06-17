@@ -45,6 +45,7 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
         String payType = request.getPayType();
         String channelTradeNo = generateChannelTradeNo();
         String payParams;
+        String expireTime = LocalDateTime.now().plusMinutes(30).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
         PayTypeEnum payTypeEnum = PayTypeEnum.getByCode(payType);
         if (payTypeEnum == null) {
@@ -53,17 +54,24 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
 
         switch (payTypeEnum) {
             case H5:
-                payParams = "https://sandbox." + getChannelCode().toLowerCase() + ".com/pay/h5?tradeNo=" + channelTradeNo + "&amount=" + request.getAmount();
+                Map<String, String> h5Params = new ConcurrentHashMap<>();
+                h5Params.put("h5Url", "https://sandbox." + getChannelCode().toLowerCase() + ".com/pay/h5?tradeNo=" + channelTradeNo + "&amount=" + request.getAmount());
+                h5Params.put("expireTime", expireTime);
+                payParams = JSON.toJSONString(h5Params);
                 break;
             case NATIVE:
-                payParams = "weixin://wxpay/sandbox/qrcode/" + channelTradeNo;
+                Map<String, String> nativeParams = new ConcurrentHashMap<>();
+                nativeParams.put("qrCode", "weixin://wxpay/sandbox/qrcode/" + channelTradeNo);
+                nativeParams.put("qrCodeUrl", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+                nativeParams.put("expireTime", expireTime);
+                payParams = JSON.toJSONString(nativeParams);
                 break;
             case JSAPI:
                 Map<String, String> jsapiParams = new ConcurrentHashMap<>();
                 jsapiParams.put("appId", StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : "sandbox_app_id");
                 jsapiParams.put("timeStamp", String.valueOf(System.currentTimeMillis() / 1000));
                 jsapiParams.put("nonceStr", IdUtil.fastSimpleUUID());
-                jsapiParams.put("package", "prepay_id=" + channelTradeNo);
+                jsapiParams.put("packageVal", "prepay_id=" + channelTradeNo);
                 jsapiParams.put("signType", "RSA");
                 jsapiParams.put("paySign", "sandbox_sign_" + IdUtil.fastSimpleUUID());
                 payParams = JSON.toJSONString(jsapiParams);
@@ -73,14 +81,17 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
                 appParams.put("appId", StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : "sandbox_app_id");
                 appParams.put("partnerId", StrUtil.isNotBlank(request.getChannelMerchantId()) ? request.getChannelMerchantId() : "sandbox_mch_id");
                 appParams.put("prepayId", channelTradeNo);
-                appParams.put("packageValue", "Sign=WXPay");
+                appParams.put("packageVal", "Sign=WXPay");
                 appParams.put("nonceStr", IdUtil.fastSimpleUUID());
                 appParams.put("timeStamp", String.valueOf(System.currentTimeMillis() / 1000));
                 appParams.put("sign", "sandbox_sign_" + IdUtil.fastSimpleUUID());
                 payParams = JSON.toJSONString(appParams);
                 break;
             default:
-                payParams = "https://sandbox." + getChannelCode().toLowerCase() + ".com/pay/default?tradeNo=" + channelTradeNo;
+                Map<String, String> defaultParams = new ConcurrentHashMap<>();
+                defaultParams.put("payUrl", "https://sandbox." + getChannelCode().toLowerCase() + ".com/pay/default?tradeNo=" + channelTradeNo);
+                defaultParams.put("expireTime", expireTime);
+                payParams = JSON.toJSONString(defaultParams);
         }
 
         log.info("[{}]沙箱下单成功, 订单号:{}, 通道交易号:{}, 支付方式:{}", getChannelCode(), request.getOrderNo(), channelTradeNo, payType);

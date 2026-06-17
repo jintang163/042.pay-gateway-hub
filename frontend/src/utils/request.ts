@@ -74,7 +74,7 @@ service.interceptors.response.use(
 
           try {
             const response = await axios.post<ApiResponse<{ token: string; refreshToken: string }>>(
-              `${BASE_URL}/auth/refresh`,
+              `${BASE_URL}/merchant/user/refresh`,
               { refreshToken }
             );
             const newToken = response.data.data.token;

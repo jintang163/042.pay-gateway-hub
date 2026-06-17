@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -18,4 +20,10 @@ public class RefundResponse implements Serializable {
     private String refundNo;
 
     private Integer refundStatus;
+
+    private String channelRefundNo;
+
+    private BigDecimal refundAmount;
+
+    private LocalDateTime refundTime;
 }

@@ -3,26 +3,34 @@ import type { Refund, RefundQueryParams, RefundListResult, RefundApplyRequest } 
 
 export const refundApi = {
   list: (params: RefundQueryParams) => {
-    return request.get<RefundListResult>('/pay/refund/list', params);
+    return request.get<RefundListResult>('/api/pay/refund/list', params);
   },
 
   detail: (id: string) => {
-    return request.get<Refund>(`/pay/refund/${id}`);
+    return request.get<Refund>(`/api/pay/refund/${id}`);
   },
 
   apply: (data: RefundApplyRequest) => {
-    return request.post<{ refundId: string; refundNo: string }>('/pay/refund/apply', data);
+    return request.post<{ refundId: string; refundNo: string }>('/api/pay/refund/apply', data);
+  },
+
+  query: (data: { refundNo?: string; outRefundNo?: string; orderNo?: string }) => {
+    return request.post<Refund>('/api/pay/refund/query', data);
   },
 
   cancel: (id: string) => {
-    return request.post<void>(`/pay/refund/${id}/cancel`);
+    return request.post<void>(`/api/pay/refund/${id}/cancel`);
   },
 
-  retry: (id: string) => {
-    return request.post<{ refundId: string; refundNo: string }>(`/pay/refund/${id}/retry`);
+  retry: (refundNo: string) => {
+    return request.post<{ refundId: string; refundNo: string }>(`/api/pay/refund/retry/${refundNo}`);
+  },
+
+  retryRefund: (refundNo: string) => {
+    return request.post<void>(`/api/pay/refund/retry/${refundNo}`);
   },
 
   export: (params: Partial<RefundQueryParams>) => {
-    return request.download('/pay/refund/export', params);
+    return request.download('/api/pay/refund/export', params);
   },
 };
