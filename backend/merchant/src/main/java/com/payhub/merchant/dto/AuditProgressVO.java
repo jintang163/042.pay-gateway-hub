@@ -4,45 +4,26 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
-public class MerchantVO implements Serializable {
+public class AuditProgressVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    private Long id;
 
     private String merchantNo;
 
     private String merchantName;
 
-    private String businessLicenseNo;
-
-    private String legalPersonName;
-
-    private String contactPhone;
-
-    private String contactEmail;
-
-    private String settlementBankName;
-
-    private String settlementBankAccount;
-
-    private String settlementAccountName;
-
     private Integer auditStatus;
 
     private String auditStatusDesc;
 
-    private String auditRemark;
-
-    private Integer status;
-
-    private String statusDesc;
-
     private Integer auditStep;
 
     private String auditStepName;
+
+    private String auditStepDescription;
 
     private String riskLevel;
 
@@ -52,6 +33,8 @@ public class MerchantVO implements Serializable {
 
     private Integer businessVerifyPassed;
 
+    private String businessVerifyResult;
+
     private LocalDateTime businessVerifyTime;
 
     private Integer autoAuditPassed;
@@ -60,7 +43,22 @@ public class MerchantVO implements Serializable {
 
     private LocalDateTime autoAuditTime;
 
-    private LocalDateTime createdAt;
+    private String manualAuditUser;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime manualAuditTime;
+
+    private String auditRemark;
+
+    private List<AuditStepItem> steps;
+
+    @Data
+    public static class AuditStepItem implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private Integer step;
+        private String name;
+        private String description;
+        private String status;
+        private LocalDateTime time;
+        private String remark;
+    }
 }

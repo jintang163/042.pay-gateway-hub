@@ -41,6 +41,28 @@ public class MerchantInfo implements Serializable {
 
     private Integer status;
 
+    private Integer auditStep;
+
+    private String riskLevel;
+
+    private Integer riskScore;
+
+    private Integer businessVerifyPassed;
+
+    private String businessVerifyResult;
+
+    private LocalDateTime businessVerifyTime;
+
+    private Integer autoAuditPassed;
+
+    private String autoAuditRemark;
+
+    private LocalDateTime autoAuditTime;
+
+    private String manualAuditUser;
+
+    private LocalDateTime manualAuditTime;
+
     private String apiKeyMd5;
 
     private String apiKeyRsaPublic;

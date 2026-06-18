@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS `merchant_info` (
   `api_key_md5` VARCHAR(64) DEFAULT NULL COMMENT 'MD5密钥',
   `api_key_rsa_public` TEXT DEFAULT NULL COMMENT 'RSA公钥',
   `api_key_rsa_private` TEXT DEFAULT NULL COMMENT 'RSA私钥',
+  `audit_step` TINYINT NOT NULL DEFAULT 1 COMMENT '审核步骤：1=资料提交 2=工商核验中 3=工商核验完成 4=风险评估中 5=评估完成 6=自动审核完成 7=人工审核中',
+  `risk_level` VARCHAR(16) DEFAULT NULL COMMENT '风险等级：LOW低 MEDIUM中 HIGH高',
+  `risk_score` INT DEFAULT NULL COMMENT '风险评分0-100，越高风险越大',
+  `business_verify_passed` TINYINT DEFAULT NULL COMMENT '工商核验是否通过：0否 1是',
+  `business_verify_result` TEXT DEFAULT NULL COMMENT '工商核验结果JSON',
+  `business_verify_time` DATETIME DEFAULT NULL COMMENT '工商核验时间',
+  `auto_audit_passed` TINYINT DEFAULT NULL COMMENT '自动审核是否通过：0否 1是',
+  `auto_audit_remark` VARCHAR(512) DEFAULT NULL COMMENT '自动审核备注',
+  `auto_audit_time` DATETIME DEFAULT NULL COMMENT '自动审核时间',
+  `manual_audit_user` VARCHAR(64) DEFAULT NULL COMMENT '人工审核人',
+  `manual_audit_time` DATETIME DEFAULT NULL COMMENT '人工审核时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
@@ -33,6 +44,8 @@ CREATE TABLE IF NOT EXISTS `merchant_info` (
   UNIQUE KEY `uk_merchant_no` (`merchant_no`),
   KEY `idx_status` (`status`),
   KEY `idx_audit_status` (`audit_status`),
+  KEY `idx_audit_step` (`audit_step`),
+  KEY `idx_risk_level` (`risk_level`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户信息表';
 

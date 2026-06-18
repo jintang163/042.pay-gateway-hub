@@ -1,10 +1,7 @@
 package com.payhub.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -16,14 +13,17 @@ import com.payhub.merchant.dto.*;
 import com.payhub.merchant.entity.MerchantInfo;
 import com.payhub.merchant.mapper.MerchantInfoMapper;
 import com.payhub.merchant.service.MerchantInfoService;
+import com.payhub.merchant.enums.AuditStepEnum;
+import com.payhub.merchant.enums.RiskLevelEnum;
+import com.payhub.merchant.service.MerchantAutoAuditService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -32,6 +32,9 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private MerchantAutoAuditService merchantAutoAuditService;
 
     private static final String SMS_CODE_CACHE_KEY = "payhub:sms:reset_api_key:";
 
@@ -60,10 +63,14 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         merchant.setSettlementAccountName(request.getSettlementAccountName());
         merchant.setAuditStatus(0);
         merchant.setStatus(1);
+        merchant.setAuditStep(AuditStepEnum.DATA_SUBMITTED.getCode());
 
         this.save(merchant);
 
         log.info("商户入驻申请提交成功: merchantNo={}, merchantName={}", merchantNo, request.getMerchantName());
+
+        merchantAutoAuditService.triggerAutoAudit(merchantNo);
+
         return merchantNo;
     }
 
@@ -80,6 +87,9 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
 
         merchant.setAuditStatus(request.getAuditStatus());
         merchant.setAuditRemark(request.getAuditRemark());
+        merchant.setManualAuditUser(request.getAuditUserName());
+        merchant.setManualAuditTime(LocalDateTime.now());
+        merchant.setAuditStep(AuditStepEnum.MANUAL_AUDITING.getCode());
 
         if (request.getAuditStatus() == 1) {
             String md5Key = SignUtil.generateMd5Key();
@@ -92,7 +102,8 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
 
         this.updateById(merchant);
 
-        log.info("商户审核完成: merchantNo={}, auditStatus={}", request.getMerchantNo(), request.getAuditStatus());
+        log.info("商户人工审核完成: merchantNo={}, auditStatus={}, auditUser={}",
+                request.getMerchantNo(), request.getAuditStatus(), request.getAuditUserName());
     }
 
     @Override
@@ -229,6 +240,18 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         vo.setSettlementBankAccount(maskBankAccount(merchant.getSettlementBankAccount()));
         vo.setAuditStatusDesc(getAuditStatusDesc(merchant.getAuditStatus()));
         vo.setStatusDesc(merchant.getStatus() == 1 ? "启用" : "禁用");
+        if (merchant.getAuditStep() != null) {
+            AuditStepEnum stepEnum = AuditStepEnum.getByCode(merchant.getAuditStep());
+            if (stepEnum != null) {
+                vo.setAuditStepName(stepEnum.getName());
+            }
+        }
+        if (StrUtil.isNotBlank(merchant.getRiskLevel())) {
+            RiskLevelEnum riskLevelEnum = RiskLevelEnum.getByCode(merchant.getRiskLevel());
+            if (riskLevelEnum != null) {
+                vo.setRiskLevelDesc(riskLevelEnum.getName());
+            }
+        }
         return vo;
     }
 
@@ -257,5 +280,99 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
             default:
                 return "";
         }
+    }
+
+    @Override
+    public AuditProgressVO getAuditProgress(String merchantNo) {
+        LambdaQueryWrapper<MerchantInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MerchantInfo::getMerchantNo, merchantNo).last("LIMIT 1");
+        MerchantInfo merchant = this.getOne(wrapper);
+        if (merchant == null) {
+            throw new BusinessException(ResultCode.MERCHANT_NOT_EXIST);
+        }
+
+        AuditProgressVO vo = new AuditProgressVO();
+        vo.setMerchantNo(merchant.getMerchantNo());
+        vo.setMerchantName(merchant.getMerchantName());
+        vo.setAuditStatus(merchant.getAuditStatus());
+        vo.setAuditStatusDesc(getAuditStatusDesc(merchant.getAuditStatus()));
+        vo.setAuditRemark(merchant.getAuditRemark());
+
+        if (merchant.getAuditStep() != null) {
+            AuditStepEnum stepEnum = AuditStepEnum.getByCode(merchant.getAuditStep());
+            if (stepEnum != null) {
+                vo.setAuditStep(stepEnum.getCode());
+                vo.setAuditStepName(stepEnum.getName());
+                vo.setAuditStepDescription(stepEnum.getDescription());
+            }
+        }
+
+        vo.setRiskLevel(merchant.getRiskLevel());
+        if (StrUtil.isNotBlank(merchant.getRiskLevel())) {
+            RiskLevelEnum riskLevelEnum = RiskLevelEnum.getByCode(merchant.getRiskLevel());
+            if (riskLevelEnum != null) {
+                vo.setRiskLevelDesc(riskLevelEnum.getName());
+            }
+        }
+        vo.setRiskScore(merchant.getRiskScore());
+        vo.setBusinessVerifyPassed(merchant.getBusinessVerifyPassed());
+        vo.setBusinessVerifyResult(merchant.getBusinessVerifyResult());
+        vo.setBusinessVerifyTime(merchant.getBusinessVerifyTime());
+        vo.setAutoAuditPassed(merchant.getAutoAuditPassed());
+        vo.setAutoAuditRemark(merchant.getAutoAuditRemark());
+        vo.setAutoAuditTime(merchant.getAutoAuditTime());
+        vo.setManualAuditUser(merchant.getManualAuditUser());
+        vo.setManualAuditTime(merchant.getManualAuditTime());
+
+        List<AuditProgressVO.AuditStepItem> stepItems = buildStepItems(merchant);
+        vo.setSteps(stepItems);
+
+        return vo;
+    }
+
+    private List<AuditProgressVO.AuditStepItem> buildStepItems(MerchantInfo merchant) {
+        List<AuditProgressVO.AuditStepItem> items = new ArrayList<>();
+
+        items.add(createStepItem(1, merchant, null, null));
+        items.add(createStepItem(2, merchant, AuditStepEnum.BUSINESS_VERIFYING, merchant.getBusinessVerifyTime()));
+        items.add(createStepItem(3, merchant, AuditStepEnum.BUSINESS_VERIFIED, merchant.getBusinessVerifyTime()));
+        items.add(createStepItem(4, merchant, AuditStepEnum.RISK_EVALUATING, merchant.getAutoAuditTime()));
+        items.add(createStepItem(5, merchant, AuditStepEnum.RISK_EVALUATED, merchant.getAutoAuditTime()));
+        items.add(createStepItem(6, merchant, AuditStepEnum.AUTO_AUDIT_DONE, merchant.getAutoAuditTime()));
+        items.add(createStepItem(7, merchant, AuditStepEnum.MANUAL_AUDITING, merchant.getManualAuditTime()));
+
+        for (AuditProgressVO.AuditStepItem item : items) {
+            if (merchant.getAuditStep() != null && merchant.getAuditStep() > item.getStep()) {
+                item.setStatus("done");
+            } else if (merchant.getAuditStep() != null && merchant.getAuditStep().equals(item.getStep())) {
+                item.setStatus("active");
+                if (item.getStep() == 3 && merchant.getBusinessVerifyPassed() != null) {
+                    item.setRemark(merchant.getBusinessVerifyPassed() == 1 ? "核验通过" : "核验未通过");
+                }
+                if (item.getStep() == 5 && merchant.getRiskScore() != null) {
+                    item.setRemark("风险评分: " + merchant.getRiskScore() + "分");
+                }
+                if (item.getStep() == 6 && merchant.getAutoAuditPassed() != null) {
+                    item.setRemark(merchant.getAutoAuditPassed() == 1 ? "自动通过" : "转人工");
+                }
+            } else {
+                item.setStatus("pending");
+            }
+        }
+
+        return items;
+    }
+
+    private AuditProgressVO.AuditStepItem createStepItem(Integer step, MerchantInfo merchant,
+                                                         AuditStepEnum stepEnum, LocalDateTime time) {
+        AuditProgressVO.AuditStepItem item = new AuditProgressVO.AuditStepItem();
+        AuditStepEnum e = stepEnum != null ? stepEnum : AuditStepEnum.getByCode(step);
+        item.setStep(step);
+        if (e != null) {
+            item.setName(e.getName());
+            item.setDescription(e.getDescription());
+        }
+        item.setTime(time);
+        return item;
     }
 }

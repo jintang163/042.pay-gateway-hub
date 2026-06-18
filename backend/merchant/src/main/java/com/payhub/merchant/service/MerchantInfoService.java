@@ -20,4 +20,6 @@ public interface MerchantInfoService extends IService<MerchantInfo> {
     ApiKeyVO resetApiKey(ApiKeyResetRequest request);
 
     boolean testCallback(String merchantNo, String url);
+
+    AuditProgressVO getAuditProgress(String merchantNo);
 }

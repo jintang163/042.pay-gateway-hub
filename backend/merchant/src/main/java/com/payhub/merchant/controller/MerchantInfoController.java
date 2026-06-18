@@ -64,4 +64,10 @@ public class MerchantInfoController {
         boolean result = merchantInfoService.testCallback(request.getMerchantNo(), request.getCallbackUrl());
         return Result.success(result);
     }
+
+    @GetMapping("/{merchantNo}/audit-progress")
+    public Result<AuditProgressVO> getAuditProgress(@PathVariable String merchantNo) {
+        AuditProgressVO progress = merchantInfoService.getAuditProgress(merchantNo);
+        return Result.success(progress);
+    }
 }

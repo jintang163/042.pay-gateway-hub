@@ -18,4 +18,6 @@ public class MerchantAuditRequest implements Serializable {
     private Integer auditStatus;
 
     private String auditRemark;
+
+    private String auditUserName;
 }

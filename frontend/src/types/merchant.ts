@@ -2,6 +2,42 @@ import type { PageParams, PageResult } from './common';
 
 export type MerchantStatus = 'pending' | 'approved' | 'rejected' | 'suspended' | 'terminated';
 
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export type AuditStepStatus = 'done' | 'active' | 'pending';
+
+export interface AuditStepItem {
+  step: number;
+  name: string;
+  description: string;
+  status: AuditStepStatus;
+  time?: string;
+  remark?: string;
+}
+
+export interface AuditProgress {
+  merchantNo: string;
+  merchantName: string;
+  auditStatus: number;
+  auditStatusDesc: string;
+  auditStep: number;
+  auditStepName: string;
+  auditStepDescription: string;
+  riskLevel?: RiskLevel;
+  riskLevelDesc?: string;
+  riskScore?: number;
+  businessVerifyPassed?: number;
+  businessVerifyResult?: string;
+  businessVerifyTime?: string;
+  autoAuditPassed?: number;
+  autoAuditRemark?: string;
+  autoAuditTime?: string;
+  manualAuditUser?: string;
+  manualAuditTime?: string;
+  auditRemark?: string;
+  steps: AuditStepItem[];
+}
+
 export interface Merchant {
   id: string;
   merchantNo: string;
@@ -24,6 +60,16 @@ export interface Merchant {
   rejectReason?: string;
   createTime: string;
   updateTime?: string;
+  auditStep?: number;
+  auditStepName?: string;
+  riskLevel?: RiskLevel;
+  riskLevelDesc?: string;
+  riskScore?: number;
+  businessVerifyPassed?: number;
+  businessVerifyTime?: string;
+  autoAuditPassed?: number;
+  autoAuditRemark?: string;
+  autoAuditTime?: string;
 }
 
 export interface MerchantApplyRequest {
