@@ -10,3 +10,4 @@ export { sandboxApi } from './sandbox';
 export { apiStatsApi } from './apiStats';
 export { callbackSimulateApi } from './callbackSimulate';
 export { feeRuleApi } from './feeRule';
+export { paymentPageApi, paymentTemplates } from './paymentPage';

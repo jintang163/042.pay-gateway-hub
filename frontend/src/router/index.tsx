@@ -22,6 +22,8 @@ const SandboxTest = lazy(() => import('@/pages/SandboxTest'));
 const ApiStats = lazy(() => import('@/pages/ApiStats'));
 const CallbackSimulator = lazy(() => import('@/pages/CallbackSimulator'));
 const FeeConfig = lazy(() => import('@/pages/FeeConfig'));
+const PaymentPageEditor = lazy(() => import('@/pages/PaymentPageEditor'));
+const PaymentPageH5 = lazy(() => import('@/pages/PaymentPageH5'));
 
 export interface RouteConfigItem {
   path: string;
@@ -148,6 +150,12 @@ export const routesConfig: RouteConfigItem[] = [
     icon: 'BarChartOutlined',
     element: <ApiStats />,
   },
+  {
+    path: 'payment-page-editor',
+    name: '支付页面定制',
+    icon: 'PaletteOutlined',
+    element: <PaymentPageEditor />,
+  },
 ];
 
 export const publicRoutes: RouteConfigItem[] = [
@@ -155,6 +163,12 @@ export const publicRoutes: RouteConfigItem[] = [
     path: 'login',
     name: '登录',
     element: <Login />,
+  },
+  {
+    path: 'h5/payment/:merchantNo',
+    name: 'H5支付',
+    element: <PaymentPageH5 />,
+    hidden: true,
   },
 ];
 
@@ -240,6 +254,10 @@ const AppRouter = () => {
               <Login />
             </PublicGuard>
           }
+        />
+        <Route
+          path="/h5/payment/:merchantNo"
+          element={<PaymentPageH5 />}
         />
         <Route
           path="/*"

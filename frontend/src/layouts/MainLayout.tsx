@@ -16,6 +16,8 @@ import {
   ExperimentOutlined,
   BarChartOutlined,
   BulbOutlined,
+  MoneyCollectOutlined,
+  PaletteOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import type { MenuProps } from 'antd';
@@ -37,6 +39,8 @@ const iconMap: Record<string, React.ReactNode> = {
   ExperimentOutlined: <ExperimentOutlined />,
   BarChartOutlined: <BarChartOutlined />,
   BulbOutlined: <BulbOutlined />,
+  MoneyCollectOutlined: <MoneyCollectOutlined />,
+  PaletteOutlined: <PaletteOutlined />,
 };
 
 const buildMenuItems = (items: typeof routesConfig, prefix = ''): MenuItem[] => {

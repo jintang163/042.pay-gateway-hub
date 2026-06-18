@@ -49,7 +49,9 @@ public enum ResultCode {
     RISK_FREQUENCY_LIMIT(4303, "请求频率超限"),
     IP_NOT_IN_WHITELIST(4304, "IP不在白名单"),
 
-    SETTLEMENT_NOT_EXIST(4401, "结算记录不存在");
+    SETTLEMENT_NOT_EXIST(4401, "结算记录不存在"),
+
+    PAYMENT_PAGE_CONFIG_NOT_EXIST(4501, "支付页面配置不存在");
 
     private final Integer code;
     private final String message;

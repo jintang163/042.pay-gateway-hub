@@ -14,3 +14,5 @@ export type { DetailDrawerProps, DetailField, DetailSection } from './DetailDraw
 
 export { default as FormModal } from './FormModal';
 export type { FormModalHandle, FormField, FormSection, FormModalProps } from './FormModal';
+
+export { default as PaymentPagePreview } from './PaymentPagePreview';
