@@ -7,15 +7,15 @@ import java.math.BigDecimal;
 @Data
 public class FeeCalcResult {
 
-    private Long amount;
+    private BigDecimal amount;
 
-    private Long feeAmount;
+    private BigDecimal feeAmount;
 
     private BigDecimal feeRate;
 
-    private Long minFee;
+    private BigDecimal minFee;
 
-    private Long maxFee;
+    private BigDecimal maxFee;
 
     private String ruleNo;
 

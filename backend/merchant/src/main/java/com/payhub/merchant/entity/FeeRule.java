@@ -24,15 +24,15 @@ public class FeeRule implements Serializable {
 
     private String payChannel;
 
-    private Long minAmount;
+    private BigDecimal minAmount;
 
-    private Long maxAmount;
+    private BigDecimal maxAmount;
 
     private BigDecimal feeRate;
 
-    private Long minFee;
+    private BigDecimal minFee;
 
-    private Long maxFee;
+    private BigDecimal maxFee;
 
     private Integer priority;
 

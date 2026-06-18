@@ -89,6 +89,8 @@ export interface Merchant {
   riskLevel?: RiskLevel;
   riskLevelDesc?: string;
   riskScore?: number;
+  industryCode?: string;
+  industryName?: string;
   businessVerifyPassed?: number;
   businessVerifyResult?: string;
   businessVerifyTime?: string;

@@ -42,9 +42,10 @@ export interface FeeRuleSaveRequest {
 }
 
 export interface FeeCalcRequest {
-  industryCode: string;
+  industryCode?: string;
   payChannel?: string;
   amount: number;
+  merchantNo?: string;
 }
 
 export interface FeeCalcResult {

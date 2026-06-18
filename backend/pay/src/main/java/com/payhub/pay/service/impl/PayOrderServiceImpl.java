@@ -21,6 +21,9 @@ import com.payhub.common.utils.Sm4Util;
 import com.payhub.merchant.entity.MerchantInfo;
 import com.payhub.merchant.mapper.MerchantInfoMapper;
 import com.payhub.merchant.service.MerchantInfoService;
+import com.payhub.merchant.service.FeeRuleService;
+import com.payhub.merchant.dto.FeeCalcRequest;
+import com.payhub.merchant.dto.FeeCalcResult;
 import com.payhub.pay.dto.*;
 import com.payhub.pay.entity.MerchantPayConfig;
 import com.payhub.pay.entity.PayOrder;
@@ -60,6 +63,9 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
     @Autowired
     private MerchantInfoMapper merchantInfoMapper;
 
+    @Autowired(required = false)
+    private FeeRuleService feeRuleService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UnifiedOrderResponse unifiedOrder(UnifiedOrderRequest request) {
@@ -88,7 +94,28 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
         }
 
         String orderNo = OrderNoGenerator.generate();
-        BigDecimal feeAmount = calculateFee(request.getPayAmount(), config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+
+        BigDecimal feeAmount;
+        if (feeRuleService != null) {
+            try {
+                FeeCalcRequest calcRequest = new FeeCalcRequest();
+                calcRequest.setMerchantNo(request.getMerchantNo());
+                calcRequest.setPayChannel(config.getPayChannel());
+                calcRequest.setAmount(request.getPayAmount());
+                FeeCalcResult calcResult = feeRuleService.calculate(calcRequest);
+                feeAmount = calcResult.getFeeAmount();
+                log.info("动态费率计算完成: merchantNo={}, amount={}, channel={}, feeAmount={}, ruleNo={}",
+                        request.getMerchantNo(), request.getPayAmount(), config.getPayChannel(),
+                        feeAmount, calcResult.getRuleNo());
+            } catch (Exception e) {
+                log.warn("动态费率计算失败，回退到配置固定费率: merchantNo={}, error={}",
+                        request.getMerchantNo(), e.getMessage());
+                feeAmount = calculateFee(request.getPayAmount(), config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+            }
+        } else {
+            feeAmount = calculateFee(request.getPayAmount(), config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+        }
+
         BigDecimal actualAmount = request.getPayAmount().subtract(feeAmount);
 
         PayOrder order = new PayOrder();

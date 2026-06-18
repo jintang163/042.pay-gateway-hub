@@ -23,7 +23,7 @@ export const feeRuleApi = {
   },
 
   detail: (ruleNo: string) => {
-    return request.get<FeeRule[]>(`/fee-rule/${ruleNo}`);
+    return request.get<FeeRule>(`/fee-rule/${ruleNo}`);
   },
 
   save: (data: FeeRuleSaveRequest) => {

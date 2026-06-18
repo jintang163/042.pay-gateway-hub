@@ -41,7 +41,7 @@ public class FeeRuleController {
     }
 
     @GetMapping("/{ruleNo}")
-    public Result<List<FeeRuleVO>> getByRuleNo(@PathVariable String ruleNo) {
+    public Result<FeeRuleVO> getByRuleNo(@PathVariable String ruleNo) {
         return Result.success(feeRuleService.getByRuleNo(ruleNo));
     }
 

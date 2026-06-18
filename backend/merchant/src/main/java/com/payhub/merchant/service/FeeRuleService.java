@@ -11,8 +11,11 @@ import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.merchant.dto.*;
 import com.payhub.merchant.entity.FeeRule;
+import com.payhub.merchant.entity.MerchantInfo;
 import com.payhub.merchant.mapper.FeeRuleMapper;
+import com.payhub.merchant.mapper.MerchantInfoMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +34,8 @@ import java.util.stream.Collectors;
 public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final BigDecimal HUNDRED = new BigDecimal("100");
+    private static final BigDecimal DEFAULT_MAX_AMOUNT = new BigDecimal("99999999.99");
 
     private static final Map<String, String> CHANNEL_DESC = new HashMap<>();
 
@@ -43,21 +48,30 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
         CHANNEL_DESC.put("PAYPAL", "PayPal");
     }
 
+    @Autowired
+    private MerchantInfoMapper merchantInfoMapper;
+
     @Transactional(rollbackFor = Exception.class)
     public void saveRule(FeeRuleSaveRequest request) {
-        if (request.getMinAmount() < 0) {
+        BigDecimal minAmt = request.getMinAmount() != null ? request.getMinAmount() : BigDecimal.ZERO;
+        BigDecimal maxAmt = request.getMaxAmount() != null ? request.getMaxAmount() : DEFAULT_MAX_AMOUNT;
+
+        if (minAmt.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "金额区间最小值不能小于0");
         }
-        if (request.getMaxAmount() <= request.getMinAmount()) {
+        if (maxAmt.compareTo(minAmt) <= 0) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "金额区间最大值必须大于最小值");
         }
-        if (request.getFeeRate().compareTo(BigDecimal.ZERO) < 0 || request.getFeeRate().compareTo(new BigDecimal("1")) > 0) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "费率必须在0到1之间");
+        BigDecimal rate = request.getFeeRate();
+        if (rate == null || rate.compareTo(BigDecimal.ZERO) < 0 || rate.compareTo(HUNDRED) > 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "费率必须在0到100之间(百分比)");
         }
-        if (request.getMinFee() != null && request.getMinFee() < 0) {
+        BigDecimal minFee = request.getMinFee();
+        BigDecimal maxFee = request.getMaxFee();
+        if (minFee != null && minFee.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "最低手续费不能小于0");
         }
-        if (request.getMaxFee() != null && request.getMinFee() != null && request.getMaxFee() < request.getMinFee()) {
+        if (maxFee != null && minFee != null && maxFee.compareTo(minFee) < 0) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "最高手续费不能小于最低手续费");
         }
 
@@ -71,8 +85,8 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
             LambdaQueryWrapper<FeeRule> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(FeeRule::getIndustryCode, request.getIndustryCode())
                     .and(w -> w.eq(FeeRule::getPayChannel, request.getPayChannel()).or().isNull(FeeRule::getPayChannel))
-                    .eq(FeeRule::getMinAmount, request.getMinAmount())
-                    .eq(FeeRule::getMaxAmount, request.getMaxAmount())
+                    .eq(FeeRule::getMinAmount, minAmt)
+                    .eq(FeeRule::getMaxAmount, maxAmt)
                     .last("LIMIT 1");
             FeeRule exist = this.getOne(wrapper);
             if (exist != null) {
@@ -84,12 +98,12 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
 
         rule.setIndustryCode(request.getIndustryCode());
         rule.setIndustryName(request.getIndustryName());
-        rule.setPayChannel(request.getPayChannel());
-        rule.setMinAmount(request.getMinAmount());
-        rule.setMaxAmount(request.getMaxAmount());
-        rule.setFeeRate(request.getFeeRate());
-        rule.setMinFee(request.getMinFee() != null ? request.getMinFee() : 0L);
-        rule.setMaxFee(request.getMaxFee());
+        rule.setPayChannel(StrUtil.isBlank(request.getPayChannel()) ? null : request.getPayChannel());
+        rule.setMinAmount(minAmt);
+        rule.setMaxAmount(maxAmt);
+        rule.setFeeRate(rate);
+        rule.setMinFee(minFee != null ? minFee : BigDecimal.ZERO);
+        rule.setMaxFee(maxFee);
         rule.setPriority(request.getPriority() != null ? request.getPriority() : 0);
         rule.setStatus(request.getStatus() != null ? request.getStatus() : 1);
         rule.setRemark(request.getRemark());
@@ -118,12 +132,12 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
         return voPage;
     }
 
-    public List<FeeRuleVO> getByRuleNo(String ruleNo) {
+    public FeeRuleVO getByRuleNo(String ruleNo) {
         FeeRule rule = this.lambdaQuery().eq(FeeRule::getRuleNo, ruleNo).one();
         if (rule == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "规则不存在");
         }
-        return java.util.Collections.singletonList(convertToVO(rule));
+        return convertToVO(rule);
     }
 
     public List<FeeRuleVO> listByIndustry(String industryCode, String payChannel) {
@@ -138,31 +152,48 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
     }
 
     public FeeCalcResult calculate(FeeCalcRequest request) {
-        if (request.getAmount() == null || request.getAmount() <= 0) {
+        String industryCode = request.getIndustryCode();
+        if (StrUtil.isBlank(industryCode) && StrUtil.isNotBlank(request.getMerchantNo())) {
+            MerchantInfo merchant = merchantInfoMapper.selectOne(
+                    new LambdaQueryWrapper<MerchantInfo>()
+                            .eq(MerchantInfo::getMerchantNo, request.getMerchantNo())
+                            .last("LIMIT 1")
+            );
+            if (merchant != null && StrUtil.isNotBlank(merchant.getIndustryCode())) {
+                industryCode = merchant.getIndustryCode();
+            }
+        }
+
+        if (StrUtil.isBlank(industryCode)) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "行业编码不能为空");
+        }
+        BigDecimal amount = request.getAmount();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "交易金额必须大于0");
         }
+
         LambdaQueryWrapper<FeeRule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(FeeRule::getIndustryCode, request.getIndustryCode());
+        wrapper.eq(FeeRule::getIndustryCode, industryCode);
         if (StrUtil.isNotBlank(request.getPayChannel())) {
             wrapper.and(w -> w.eq(FeeRule::getPayChannel, request.getPayChannel()).or().isNull(FeeRule::getPayChannel));
         }
         wrapper.eq(FeeRule::getStatus, 1);
-        wrapper.le(FeeRule::getMinAmount, request.getAmount());
-        wrapper.ge(FeeRule::getMaxAmount, request.getAmount());
+        wrapper.le(FeeRule::getMinAmount, amount);
+        wrapper.ge(FeeRule::getMaxAmount, amount);
         wrapper.orderByDesc(FeeRule::getPriority);
 
         List<FeeRule> rules = this.list(wrapper);
         FeeRule matched = rules.stream()
-                .filter(r -> request.getAmount() >= r.getMinAmount() && request.getAmount() <= r.getMaxAmount())
+                .filter(r -> amount.compareTo(r.getMinAmount()) >= 0 && amount.compareTo(r.getMaxAmount()) <= 0)
                 .max(Comparator.comparingInt(FeeRule::getPriority))
                 .orElse(null);
 
         FeeCalcResult result = new FeeCalcResult();
-        result.setAmount(request.getAmount());
-        result.setIndustryCode(request.getIndustryCode());
+        result.setAmount(amount);
+        result.setIndustryCode(industryCode);
 
         if (matched == null) {
-            result.setFeeAmount(0L);
+            result.setFeeAmount(BigDecimal.ZERO);
             result.setFeeRate(BigDecimal.ZERO);
             result.setCalcDetail("未匹配到规则，按0手续费处理");
             return result;
@@ -175,19 +206,25 @@ public class FeeRuleService extends ServiceImpl<FeeRuleMapper, FeeRule> {
         result.setMinFee(matched.getMinFee());
         result.setMaxFee(matched.getMaxFee());
 
-        BigDecimal amount = BigDecimal.valueOf(request.getAmount());
-        BigDecimal rawFee = amount.multiply(matched.getFeeRate()).setScale(0, RoundingMode.HALF_UP);
-        long fee = rawFee.longValue();
+        BigDecimal rawFee = amount.multiply(matched.getFeeRate())
+                .divide(HUNDRED, 2, RoundingMode.HALF_UP);
+        BigDecimal fee = rawFee;
 
         String detail;
-        if (matched.getMinFee() != null && matched.getMinFee() > 0 && fee < matched.getMinFee()) {
-            detail = String.format("金额%s × 费率%s = %s分，低于最低手续费%s分，取最低手续费", request.getAmount(), matched.getFeeRate(), rawFee.longValue(), matched.getMinFee());
-            fee = matched.getMinFee();
-        } else if (matched.getMaxFee() != null && matched.getMaxFee() > 0 && fee > matched.getMaxFee()) {
-            detail = String.format("金额%s × 费率%s = %s分，高于最高手续费%s分，取最高手续费", request.getAmount(), matched.getFeeRate(), rawFee.longValue(), matched.getMaxFee());
-            fee = matched.getMaxFee();
+        BigDecimal minFee = matched.getMinFee();
+        BigDecimal maxFee = matched.getMaxFee();
+
+        if (minFee != null && minFee.compareTo(BigDecimal.ZERO) > 0 && fee.compareTo(minFee) < 0) {
+            detail = String.format("金额%s × 费率%s%% = %s元，低于最低手续费%s元，取最低手续费",
+                    amount, matched.getFeeRate(), rawFee.toPlainString(), minFee.toPlainString());
+            fee = minFee;
+        } else if (maxFee != null && maxFee.compareTo(BigDecimal.ZERO) > 0 && fee.compareTo(maxFee) > 0) {
+            detail = String.format("金额%s × 费率%s%% = %s元，高于最高手续费%s元，取最高手续费",
+                    amount, matched.getFeeRate(), rawFee.toPlainString(), maxFee.toPlainString());
+            fee = maxFee;
         } else {
-            detail = String.format("金额%s × 费率%s = %s分", request.getAmount(), matched.getFeeRate(), fee);
+            detail = String.format("金额%s × 费率%s%% = %s元",
+                    amount, matched.getFeeRate(), fee.toPlainString());
         }
 
         result.setFeeAmount(fee);

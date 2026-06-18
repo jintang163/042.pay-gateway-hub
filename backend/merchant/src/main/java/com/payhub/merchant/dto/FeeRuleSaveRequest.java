@@ -20,17 +20,17 @@ public class FeeRuleSaveRequest {
     private String payChannel;
 
     @NotNull(message = "金额区间最小值不能为空")
-    private Long minAmount;
+    private BigDecimal minAmount;
 
     @NotNull(message = "金额区间最大值不能为空")
-    private Long maxAmount;
+    private BigDecimal maxAmount;
 
     @NotNull(message = "费率不能为空")
     private BigDecimal feeRate;
 
-    private Long minFee;
+    private BigDecimal minFee;
 
-    private Long maxFee;
+    private BigDecimal maxFee;
 
     private Integer priority;
 

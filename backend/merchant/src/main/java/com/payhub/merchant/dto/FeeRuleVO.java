@@ -19,15 +19,15 @@ public class FeeRuleVO {
 
     private String payChannelDesc;
 
-    private Long minAmount;
+    private BigDecimal minAmount;
 
-    private Long maxAmount;
+    private BigDecimal maxAmount;
 
     private BigDecimal feeRate;
 
-    private Long minFee;
+    private BigDecimal minFee;
 
-    private Long maxFee;
+    private BigDecimal maxFee;
 
     private Integer priority;
 

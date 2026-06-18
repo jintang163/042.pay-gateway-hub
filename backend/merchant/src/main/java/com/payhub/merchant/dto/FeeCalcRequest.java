@@ -4,6 +4,7 @@ import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
+import java.math.BigDecimal;
 
 @Data
 public class FeeCalcRequest {
@@ -14,5 +15,7 @@ public class FeeCalcRequest {
     private String payChannel;
 
     @NotNull(message = "交易金额不能为空")
-    private Long amount;
+    private BigDecimal amount;
+
+    private String merchantNo;
 }

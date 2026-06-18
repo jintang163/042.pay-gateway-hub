@@ -41,6 +41,10 @@ public class MerchantInfo implements Serializable {
 
     private Integer status;
 
+    private String industryCode;
+
+    private String industryName;
+
     private Integer auditStep;
 
     private String riskLevel;

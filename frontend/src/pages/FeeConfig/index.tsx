@@ -20,6 +20,7 @@ import {
   Col,
   Statistic,
   Divider,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -29,15 +30,14 @@ import {
   CalculatorOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { feeRuleApi } from '@/api';
+import { feeRuleApi, merchantApi } from '@/api';
 import type {
   FeeRule,
-  FeeRuleQueryParams,
   FeeRuleSaveRequest,
-  FeeCalcRequest,
-  FeeCalcResult,
   IndustryOption,
 } from '@/types/feeRule';
+import type { Merchant } from '@/types/merchant';
+import { useUserStore } from '@/store';
 import { formatDateTime, formatPercent, formatAmount } from '@/utils';
 
 const channelOptions = [
@@ -64,10 +64,10 @@ const commonIndustryOptions: IndustryOption[] = [
 ];
 
 const renderAmountRange = (min: number, max: number): JSX.Element => {
-  const minYuan = min / 100;
-  const maxYuan = max === 999999999999 ? Infinity : max / 100;
+  const minYuan = min;
+  const maxYuan = max >= 99999999 ? Infinity : max;
   const minText = minYuan === 0 ? '0' : formatAmount(minYuan);
-  const maxText = maxYuan === Infinity ? '∞' : formatAmount(maxYuan);
+  const maxText = !isFinite(maxYuan) ? '∞' : formatAmount(maxYuan);
   return (
     <span>
       {minText} ~ {maxText}
@@ -76,6 +76,9 @@ const renderAmountRange = (min: number, max: number): JSX.Element => {
 };
 
 const FeeConfigPage = () => {
+  const { user } = useUserStore();
+  const isAdmin = user?.role === 'admin' || user?.role === 'operator';
+
   const [activeTab, setActiveTab] = useState<string>('ladder');
   const [form] = Form.useForm();
   const [calcForm] = Form.useForm();
@@ -85,6 +88,7 @@ const FeeConfigPage = () => {
   const [data, setData] = useState<FeeRule[]>([]);
   const [pagination, setPagination] = useState({ current: 1, size: 10, total: 0 });
   const [industries, setIndustries] = useState<IndustryOption[]>(commonIndustryOptions);
+  const [currentMerchant, setCurrentMerchant] = useState<Merchant | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<FeeRule | null>(null);
@@ -93,14 +97,13 @@ const FeeConfigPage = () => {
   const [ladderLoading, setLadderLoading] = useState(false);
   const [ladderData, setLadderData] = useState<FeeRule[]>([]);
 
-  const [calcResult, setCalcResult] = useState<FeeCalcResult | null>(null);
+  const [calcResult, setCalcResult] = useState<any>(null);
   const [calcLoading, setCalcLoading] = useState(false);
 
   const fetchData = async (page = pagination.current, size = pagination.size) => {
     try {
       setLoading(true);
-      const params: FeeRuleQueryParams = { current: page, size };
-      const result = await feeRuleApi.list(params);
+      const result = await feeRuleApi.list({ current: page, size });
       setData(result.records);
       setPagination({ current: result.current, size: result.size, total: result.total });
     } catch (e: any) {
@@ -124,7 +127,7 @@ const FeeConfigPage = () => {
   const fetchLadder = async (industryCode: string, payChannel?: string) => {
     try {
       setLadderLoading(true);
-      const list = await feeRuleApi.listByIndustry(industryCode, payChannel);
+      const list = await feeRuleApi.listByIndustry(industryCode, payChannel || undefined);
       setLadderData(list);
     } catch (e: any) {
       message.error(e?.message || '加载阶梯费率失败');
@@ -134,24 +137,50 @@ const FeeConfigPage = () => {
     }
   };
 
+  const fetchCurrentMerchant = async () => {
+    if (!isAdmin) {
+      try {
+        const merchantNo = user?.username || '';
+        const m = await merchantApi.detail(merchantNo);
+        setCurrentMerchant(m as any);
+      } catch {
+      }
+    }
+  };
+
   useEffect(() => {
-    fetchData();
     fetchIndustries();
-  }, []);
+    if (isAdmin) {
+      fetchData();
+    } else {
+      fetchCurrentMerchant();
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     if (activeTab === 'ladder') {
       const vals = ladderForm.getFieldsValue();
-      if (vals.industryCode) {
-        fetchLadder(vals.industryCode, vals.payChannel || undefined);
+      let defaultIndustry = vals.industryCode;
+      if (!defaultIndustry && !isAdmin && currentMerchant?.industryCode) {
+        defaultIndustry = currentMerchant.industryCode;
+        ladderForm.setFieldsValue({ industryCode: defaultIndustry });
+      }
+      if (defaultIndustry) {
+        fetchLadder(defaultIndustry, vals.payChannel || undefined);
       }
     }
-  }, [activeTab]);
+  }, [activeTab, currentMerchant]);
 
   const handleAdd = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ status: 1, priority: 0, minFee: 0, minAmount: 0, maxAmount: 999999999999 });
+    form.setFieldsValue({
+      status: 1,
+      priority: 0,
+      minFee: 0,
+      minAmount: 0,
+      maxAmount: 99999999.99,
+    });
     setModalVisible(true);
   };
 
@@ -159,7 +188,7 @@ const FeeConfigPage = () => {
     setEditing(record);
     form.setFieldsValue({
       ...record,
-      feeRate: record.feeRate * 100,
+      feeRate: record.feeRate,
     });
     setModalVisible(true);
   };
@@ -190,7 +219,6 @@ const FeeConfigPage = () => {
       setSubmitting(true);
       const payload: FeeRuleSaveRequest = {
         ...values,
-        feeRate: Number((values.feeRate / 100).toFixed(6)),
         payChannel: values.payChannel || undefined,
       };
       await feeRuleApi.save(payload);
@@ -210,12 +238,11 @@ const FeeConfigPage = () => {
     try {
       const values = await calcForm.validateFields();
       setCalcLoading(true);
-      const req: FeeCalcRequest = {
+      const result = await feeRuleApi.calculate({
         industryCode: values.industryCode,
         payChannel: values.payChannel || undefined,
-        amount: Math.round(values.amountYuan * 100),
-      };
-      const result = await feeRuleApi.calculate(req);
+        amount: values.amountYuan,
+      });
       setCalcResult(result);
     } catch (e: any) {
       if (e?.errorFields) return;
@@ -225,7 +252,7 @@ const FeeConfigPage = () => {
     }
   };
 
-  const columns: ColumnsType<FeeRule> = [
+  const manageColumns: ColumnsType<FeeRule> = [
     {
       title: '规则编号',
       dataIndex: 'ruleNo',
@@ -263,21 +290,21 @@ const FeeConfigPage = () => {
       title: '费率',
       dataIndex: 'feeRate',
       key: 'feeRate',
-      width: 90,
+      width: 100,
       render: (rate: number) => (
         <Tag color="geekblue" style={{ fontSize: 14, padding: '2px 10px' }}>
-          {formatPercent(rate)}
+          {formatPercent(rate / 100)}
         </Tag>
       ),
     },
     {
       title: '单笔最低/最高（元）',
       key: 'feeRange',
-      width: 150,
+      width: 160,
       render: (_, r) => (
         <span>
-          {r.minFee ? formatAmount(r.minFee / 100) : '0'}
-          {r.maxFee ? ` / ${formatAmount(r.maxFee / 100)}` : ' / ∞'}
+          {r.minFee ? formatAmount(r.minFee) : '0'}
+          {r.maxFee ? ` / ${formatAmount(r.maxFee)}` : ' / ∞'}
         </span>
       ),
     },
@@ -356,7 +383,7 @@ const FeeConfigPage = () => {
       width: 120,
       render: (rate: number) => (
         <span style={{ fontWeight: 600, fontSize: 16, color: '#1677ff' }}>
-          {formatPercent(rate)}
+          {formatPercent(rate / 100)}
         </span>
       ),
     },
@@ -365,14 +392,14 @@ const FeeConfigPage = () => {
       dataIndex: 'minFee',
       key: 'minFee',
       width: 140,
-      render: (fee: number) => (fee ? formatAmount(fee / 100) : <Tag color="default">无限制</Tag>),
+      render: (fee: number) => (fee ? formatAmount(fee) : <Tag color="default">无限制</Tag>),
     },
     {
       title: '单笔最高手续费',
       dataIndex: 'maxFee',
       key: 'maxFee',
       width: 140,
-      render: (fee?: number) => (fee ? formatAmount(fee / 100) : <Tag color="default">无限制</Tag>),
+      render: (fee?: number) => (fee ? formatAmount(fee) : <Tag color="default">无限制</Tag>),
     },
     {
       title: '备注',
@@ -382,13 +409,18 @@ const FeeConfigPage = () => {
     },
   ];
 
+  const defaultCalcIndustry = () => {
+    if (!isAdmin && currentMerchant?.industryCode) return currentMerchant.industryCode;
+    return 'RETAIL';
+  };
+
   const ladderTab = (
     <div>
       <Card title="阶梯费率查询" style={{ marginBottom: 16 }}>
         <Form
           form={ladderForm}
           layout="inline"
-          initialValues={{ industryCode: 'RETAIL' }}
+          initialValues={{ industryCode: defaultCalcIndustry() }}
           onValuesChange={(changed) => {
             if ('industryCode' in changed || 'payChannel' in changed) {
               const vals = ladderForm.getFieldsValue();
@@ -402,6 +434,7 @@ const FeeConfigPage = () => {
             <Select
               placeholder="选择行业"
               style={{ width: 200 }}
+              disabled={!isAdmin && !!currentMerchant?.industryCode}
               options={industries.map((i) => ({ label: i.name, value: i.code }))}
             />
           </Form.Item>
@@ -414,15 +447,27 @@ const FeeConfigPage = () => {
             />
           </Form.Item>
           <Form.Item>
-            <Button icon={<ReloadOutlined />} onClick={() => {
-              const vals = ladderForm.getFieldsValue();
-              if (vals.industryCode) fetchLadder(vals.industryCode, vals.payChannel || undefined);
-            }}>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                const vals = ladderForm.getFieldsValue();
+                if (vals.industryCode) fetchLadder(vals.industryCode, vals.payChannel || undefined);
+              }}
+            >
               刷新
             </Button>
           </Form.Item>
         </Form>
       </Card>
+
+      {!isAdmin && currentMerchant && (
+        <Alert
+          message={`您当前所属行业：${currentMerchant.industryName || currentMerchant.industryCode || '未设置'}`}
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Card title="阶梯费率表">
         <Table<FeeRule>
@@ -445,7 +490,7 @@ const FeeConfigPage = () => {
             <Form
               form={calcForm}
               layout="vertical"
-              initialValues={{ industryCode: 'RETAIL', amountYuan: 100 }}
+              initialValues={{ industryCode: defaultCalcIndustry(), amountYuan: 100 }}
             >
               <Form.Item
                 label="行业类别"
@@ -454,6 +499,7 @@ const FeeConfigPage = () => {
               >
                 <Select
                   placeholder="选择行业"
+                  disabled={!isAdmin && !!currentMerchant?.industryCode}
                   options={industries.map((i) => ({ label: i.name, value: i.code }))}
                 />
               </Form.Item>
@@ -492,7 +538,7 @@ const FeeConfigPage = () => {
               <div>
                 <Row gutter={[0, 16]}>
                   <Col span={12}>
-                    <Statistic title="交易金额" value={calcResult.amount} precision={2} suffix="元" formatter={(v) => formatAmount(Number(v) / 100)} />
+                    <Statistic title="交易金额" value={calcResult.amount} precision={2} suffix="元" formatter={(v: number) => formatAmount(v)} />
                   </Col>
                   <Col span={12}>
                     <Statistic
@@ -501,13 +547,13 @@ const FeeConfigPage = () => {
                       precision={2}
                       suffix="元"
                       valueStyle={{ color: '#cf1322' }}
-                      formatter={(v) => formatAmount(Number(v) / 100)}
+                      formatter={(v: number) => formatAmount(v)}
                     />
                   </Col>
                 </Row>
                 <Row gutter={[0, 16]} style={{ marginTop: 8 }}>
                   <Col span={12}>
-                    <Statistic title="适用费率" value={calcResult.feeRate} formatter={(v) => formatPercent(Number(v))} />
+                    <Statistic title="适用费率" value={calcResult.feeRate} formatter={(v: number) => formatPercent(v / 100)} />
                   </Col>
                   <Col span={12}>
                     <Statistic
@@ -516,7 +562,7 @@ const FeeConfigPage = () => {
                       precision={2}
                       suffix="元"
                       valueStyle={{ color: '#3f8600' }}
-                      formatter={(v) => formatAmount(Number(v) / 100)}
+                      formatter={(v: number) => formatAmount(v)}
                     />
                   </Col>
                 </Row>
@@ -560,7 +606,7 @@ const FeeConfigPage = () => {
       }
     >
       <Table<FeeRule>
-        columns={columns}
+        columns={manageColumns}
         dataSource={data}
         rowKey="id"
         loading={loading}
@@ -578,16 +624,20 @@ const FeeConfigPage = () => {
     </Card>
   );
 
+  const tabItems = [
+    { key: 'ladder', label: '阶梯费率表', children: ladderTab },
+    { key: 'calc', label: '手续费计算', children: calcTab },
+  ];
+  if (isAdmin) {
+    tabItems.push({ key: 'manage', label: '规则管理', children: manageTab });
+  }
+
   return (
     <div>
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
-        items={[
-          { key: 'ladder', label: '阶梯费率表', children: ladderTab },
-          { key: 'calc', label: '手续费计算', children: calcTab },
-          { key: 'manage', label: '规则管理', children: manageTab },
-        ]}
+        items={tabItems}
       />
 
       <Modal
@@ -647,19 +697,19 @@ const FeeConfigPage = () => {
             <Col span={8}>
               <Form.Item
                 name="minAmount"
-                label="金额区间最小值（分）"
+                label="金额区间最小值（元）"
                 rules={[{ required: true }]}
               >
-                <InputNumber min={0} style={{ width: '100%' }} placeholder="如：0" />
+                <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} placeholder="如：0" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item
                 name="maxAmount"
-                label="金额区间最大值（分）"
+                label="金额区间最大值（元）"
                 rules={[{ required: true }]}
               >
-                <InputNumber min={1} style={{ width: '100%' }} placeholder="如：999999999999" />
+                <InputNumber min={0.01} step={0.01} precision={2} style={{ width: '100%' }} placeholder="如：99999999.99" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -674,13 +724,13 @@ const FeeConfigPage = () => {
           </Row>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="minFee" label="单笔最低手续费（分）">
-                <InputNumber min={0} style={{ width: '100%' }} placeholder="默认0" />
+              <Form.Item name="minFee" label="单笔最低手续费（元）">
+                <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} placeholder="默认0" />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="maxFee" label="单笔最高手续费（分）">
-                <InputNumber min={0} style={{ width: '100%' }} placeholder="留空=不限制" />
+              <Form.Item name="maxFee" label="单笔最高手续费（元）">
+                <InputNumber min={0} step={0.01} precision={2} style={{ width: '100%' }} placeholder="留空=不限制" />
               </Form.Item>
             </Col>
             <Col span={8}>
