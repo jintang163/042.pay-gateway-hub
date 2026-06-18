@@ -80,3 +80,10 @@ business-api:
   app-secret: change-me-in-production
   timeout-ms: 5000
   retry-times: 2
+
+payhub:
+  upload:
+    path: ./uploads
+    max-size: 5242880
+  payment-page:
+    base-url: /h5/payment

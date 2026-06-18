@@ -684,3 +684,30 @@ CREATE TABLE IF NOT EXISTS `fee_rule` (
   KEY `idx_status` (`status`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='动态手续费规则表';
+
+-- -----------------------------------------------
+-- 22. 支付页面个性化配置表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `payment_page_config` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户号',
+  `page_title` VARCHAR(100) DEFAULT NULL COMMENT '页面标题',
+  `logo_url` VARCHAR(1024) DEFAULT NULL COMMENT 'Logo图片URL',
+  `primary_color` VARCHAR(20) DEFAULT '#1677ff' COMMENT '主色调',
+  `secondary_color` VARCHAR(20) DEFAULT NULL COMMENT '辅助色',
+  `background_color` VARCHAR(20) DEFAULT '#f5f7fa' COMMENT '页面背景色',
+  `text_color` VARCHAR(20) DEFAULT '#333333' COMMENT '文字颜色',
+  `button_color` VARCHAR(20) DEFAULT '#1677ff' COMMENT '按钮颜色',
+  `button_text_color` VARCHAR(20) DEFAULT '#ffffff' COMMENT '按钮文字颜色',
+  `color_scheme_code` VARCHAR(50) DEFAULT 'DEFAULT' COMMENT '配色方案编码',
+  `custom_css` TEXT DEFAULT NULL COMMENT '自定义CSS',
+  `footer_text` VARCHAR(200) DEFAULT NULL COMMENT '页脚文字',
+  `return_url` VARCHAR(500) DEFAULT NULL COMMENT '支付完成返回地址',
+  `status` TINYINT DEFAULT 1 COMMENT '状态：1启用 0禁用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_no` (`merchant_no`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付页面个性化配置表';

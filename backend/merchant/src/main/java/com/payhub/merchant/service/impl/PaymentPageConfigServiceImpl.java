@@ -33,7 +33,7 @@ public class PaymentPageConfigServiceImpl extends ServiceImpl<PaymentPageConfigM
     @Value("${payhub.payment-page.base-url:/h5/payment}")
     private String paymentPageBaseUrl;
 
-    private static final String DEFAULT_TEMPLATE = "DEFAULT";
+    private static final String DEFAULT_COLOR_SCHEME = "DEFAULT";
     private static final String DEFAULT_PRIMARY_COLOR = "#1677ff";
     private static final String DEFAULT_BACKGROUND_COLOR = "#f5f7fa";
     private static final String DEFAULT_TEXT_COLOR = "#333333";
@@ -213,7 +213,7 @@ public class PaymentPageConfigServiceImpl extends ServiceImpl<PaymentPageConfigM
         } else {
             vo.setPageTitle("收银台");
         }
-        vo.setTemplateCode(DEFAULT_TEMPLATE);
+        vo.setColorSchemeCode(DEFAULT_COLOR_SCHEME);
         vo.setPrimaryColor(DEFAULT_PRIMARY_COLOR);
         vo.setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
         vo.setTextColor(DEFAULT_TEXT_COLOR);

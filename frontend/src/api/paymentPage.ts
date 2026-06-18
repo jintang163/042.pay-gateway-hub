@@ -6,6 +6,13 @@ import type {
   PaymentPageConfigListResult,
 } from '@/types/paymentPage';
 
+export interface UploadResult {
+  url: string;
+  fileName: string;
+  originalName: string;
+  size: string;
+}
+
 export const paymentPageApi = {
   saveConfig: (data: PaymentPageConfigSaveRequest) => {
     return request.post<PaymentPageConfig>('/payment-page/config', data);
@@ -34,9 +41,20 @@ export const paymentPageApi = {
   getPublicConfig: (merchantNo: string) => {
     return request.get<PaymentPageConfig>(`/payment-page/public/${merchantNo}`);
   },
+
+  uploadImage: (file: File, bizType = 'payment-page') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('bizType', bizType);
+    return request.post<UploadResult>('/file/upload/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };
 
-export const paymentTemplates = [
+export const colorSchemes = [
   {
     code: 'DEFAULT',
     name: '简约经典',

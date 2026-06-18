@@ -43,12 +43,12 @@ public class PaymentPageConfigController {
             @RequestParam(defaultValue = "10") Long size,
             @RequestParam(required = false) String merchantNo,
             @RequestParam(required = false) String merchantName,
-            @RequestParam(required = false) String templateCode,
+            @RequestParam(required = false) String colorSchemeCode,
             @RequestParam(required = false) Integer status) {
         Map<String, Object> params = new HashMap<>();
         params.put("merchantNo", merchantNo);
         params.put("merchantName", merchantName);
-        params.put("templateCode", templateCode);
+        params.put("colorSchemeCode", colorSchemeCode);
         params.put("status", status);
         IPage<PaymentPageConfigVO> page = paymentPageConfigService.listPage(current, size, params);
         return Result.success(page);

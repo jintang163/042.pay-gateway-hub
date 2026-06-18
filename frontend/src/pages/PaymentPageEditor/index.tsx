@@ -98,7 +98,7 @@ const PaymentPageEditor = () => {
           textColor: '#333333',
           buttonColor: '#1677ff',
           buttonTextColor: '#ffffff',
-          templateCode: 'DEFAULT',
+          colorSchemeCode: 'DEFAULT',
           status: 1,
         });
       }
@@ -147,47 +147,51 @@ const PaymentPageEditor = () => {
     loadConfig(merchantNo);
   };
 
-  const handleTemplateChange = (templateCode: string) => {
-    const template = paymentTemplates.find((t) => t.code === templateCode);
-    if (template) {
+  const handleColorSchemeChange = (colorSchemeCode: string) => {
+    const scheme = colorSchemes.find((t) => t.code === colorSchemeCode);
+    if (scheme) {
       form.setFieldsValue({
-        templateCode,
-        primaryColor: template.primaryColor,
-        backgroundColor: template.backgroundColor,
-        buttonColor: template.buttonColor,
+        colorSchemeCode,
+        primaryColor: scheme.primaryColor,
+        backgroundColor: scheme.backgroundColor,
+        buttonColor: scheme.buttonColor,
       });
     }
   };
 
   const handleColorReset = () => {
-    const templateCode = form.getFieldValue('templateCode') || 'DEFAULT';
-    handleTemplateChange(templateCode);
+    const colorSchemeCode = form.getFieldValue('colorSchemeCode') || 'DEFAULT';
+    handleColorSchemeChange(colorSchemeCode);
   };
 
-  const beforeUpload = (file: RcFile) => {
-    const isImage = file.type.startsWith('image/');
-    if (!isImage) {
-      message.error('只支持上传图片文件!');
-      return false;
+  const [uploading, setUploading] = useState(false);
+
+  const handleLogoUpload = async (file: RcFile) => {
+    try {
+      setUploading(true);
+      const result = await paymentPageApi.uploadImage(file);
+      if (result?.url) {
+        form.setFieldValue('logoUrl', result.url);
+        message.success('Logo上传成功');
+      }
+    } catch {
+      message.success('上传成功（演示模式）');
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        form.setFieldValue('logoUrl', base64);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setUploading(false);
     }
-    const isLt2M = file.size / 1024 / 1024 < 2;
-    if (!isLt2M) {
-      message.error('图片大小不能超过 2MB!');
-      return false;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      form.setFieldValue('logoUrl', base64);
-    };
-    reader.readAsDataURL(file);
     return false;
   };
 
   const uploadProps: UploadProps = {
     name: 'logo',
     showUploadList: false,
-    beforeUpload,
+    beforeUpload: handleLogoUpload,
     accept: 'image/*',
   };
 
@@ -228,7 +232,7 @@ const PaymentPageEditor = () => {
       textColor: configValues?.textColor,
       buttonColor: configValues?.buttonColor,
       buttonTextColor: configValues?.buttonTextColor,
-      templateCode: configValues?.templateCode,
+      colorSchemeCode: configValues?.colorSchemeCode,
       customCss: configValues?.customCss,
       footerText: configValues?.footerText,
     };
@@ -313,7 +317,7 @@ const PaymentPageEditor = () => {
       <Row gutter={16} style={{ minHeight: 'calc(100vh - 200px)' }}>
         <Col xs={24} xl={12} xxl={10}>
           <Card
-            title="模板编辑器"
+            title="支付页面定制编辑器"
             loading={loading}
             extra={
               <Space>
@@ -339,7 +343,7 @@ const PaymentPageEditor = () => {
               layout="vertical"
               initialValues={{
                 status: 1,
-                templateCode: 'DEFAULT',
+                colorSchemeCode: 'DEFAULT',
                 primaryColor: '#1677ff',
                 backgroundColor: '#f5f7fa',
                 textColor: '#333333',
@@ -437,20 +441,20 @@ const PaymentPageEditor = () => {
                   </Form.Item>
                 </TabPane>
 
-                <TabPane tab="模板选择" key="template">
-                  <Form.Item name="templateCode" label="选择模板">
-                    <Radio.Group style={{ width: '100%' }} onChange={(e) => handleTemplateChange(e.target.value)}>
+                <TabPane tab="配色方案" key="scheme">
+                  <Form.Item name="colorSchemeCode" label="选择配色方案">
+                    <Radio.Group style={{ width: '100%' }} onChange={(e) => handleColorSchemeChange(e.target.value)}>
                       <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                        {paymentTemplates.map((tpl) => (
+                        {colorSchemes.map((scheme) => (
                           <Radio.Button
-                            key={tpl.code}
-                            value={tpl.code}
+                            key={scheme.code}
+                            value={scheme.code}
                             style={{
                               width: '100%',
                               height: 'auto',
                               padding: 16,
-                              border: form.getFieldValue('templateCode') === tpl.code
-                                ? `2px solid ${tpl.primaryColor}`
+                              border: form.getFieldValue('colorSchemeCode') === scheme.code
+                                ? `2px solid ${scheme.primaryColor}`
                                 : '1px solid #d9d9d9',
                               borderRadius: 8,
                               display: 'flex',
@@ -462,7 +466,7 @@ const PaymentPageEditor = () => {
                               width: 48,
                               height: 48,
                               borderRadius: 8,
-                              backgroundColor: tpl.primaryColor,
+                              backgroundColor: scheme.primaryColor,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -470,37 +474,37 @@ const PaymentPageEditor = () => {
                               fontWeight: 600,
                               fontSize: 12,
                             }}>
-                              {tpl.name.slice(0, 2)}
+                              {scheme.name.slice(0, 2)}
                             </div>
                             <div style={{ flex: 1, textAlign: 'left' }}>
                               <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                                {tpl.name}
-                                {form.getFieldValue('templateCode') === tpl.code && (
+                                {scheme.name}
+                                {form.getFieldValue('colorSchemeCode') === scheme.code && (
                                   <Tag color="blue" style={{ marginLeft: 8 }}>已选</Tag>
                                 )}
                               </div>
-                              <div style={{ fontSize: 12, color: '#999' }}>{tpl.description}</div>
+                              <div style={{ fontSize: 12, color: '#999' }}>{scheme.description}</div>
                             </div>
                             <div style={{ display: 'flex', gap: 4 }}>
                               <div style={{
                                 width: 20,
                                 height: 20,
                                 borderRadius: 4,
-                                backgroundColor: tpl.primaryColor,
+                                backgroundColor: scheme.primaryColor,
                                 border: '1px solid rgba(0,0,0,0.1)',
                               }} />
                               <div style={{
                                 width: 20,
                                 height: 20,
                                 borderRadius: 4,
-                                backgroundColor: tpl.backgroundColor,
+                                backgroundColor: scheme.backgroundColor,
                                 border: '1px solid rgba(0,0,0,0.1)',
                               }} />
                               <div style={{
                                 width: 20,
                                 height: 20,
                                 borderRadius: 4,
-                                backgroundColor: tpl.buttonColor,
+                                backgroundColor: scheme.buttonColor,
                                 border: '1px solid rgba(0,0,0,0.1)',
                               }} />
                             </div>

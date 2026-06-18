@@ -119,7 +119,7 @@ const PaymentPageH5 = () => {
         buttonColor: '#1677ff',
         buttonTextColor: '#ffffff',
         pageTitle: '收银台',
-        templateCode: 'DEFAULT',
+        colorSchemeCode: 'DEFAULT',
       });
       setOrderInfo({
         orderNo: `DEMO${Date.now()}`,

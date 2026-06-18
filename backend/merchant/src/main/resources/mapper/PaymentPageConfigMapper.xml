@@ -35,7 +35,7 @@
             text_color,
             button_color,
             button_text_color,
-            template_code,
+            color_scheme_code,
             custom_css,
             footer_text,
             return_url,
@@ -54,8 +54,8 @@
                     SELECT merchant_no FROM merchant_info WHERE merchant_name LIKE CONCAT('%', #{params.merchantName}, '%')
                 )
             </if>
-            <if test="params.templateCode != null and params.templateCode != ''">
-                AND template_code = #{params.templateCode}
+            <if test="params.colorSchemeCode != null and params.colorSchemeCode != ''">
+                AND color_scheme_code = #{params.colorSchemeCode}
             </if>
             <if test="params.status != null">
                 AND status = #{params.status}

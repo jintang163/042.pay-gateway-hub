@@ -18,14 +18,14 @@ interface PaymentPagePreviewProps {
 
 const defaultConfig: Required<Pick<
   PaymentPageConfig,
-  'primaryColor' | 'backgroundColor' | 'textColor' | 'buttonColor' | 'buttonTextColor' | 'templateCode'
+  'primaryColor' | 'backgroundColor' | 'textColor' | 'buttonColor' | 'buttonTextColor' | 'colorSchemeCode'
 >> = {
   primaryColor: '#1677ff',
   backgroundColor: '#f5f7fa',
   textColor: '#333333',
   buttonColor: '#1677ff',
   buttonTextColor: '#ffffff',
-  templateCode: 'DEFAULT',
+  colorSchemeCode: 'DEFAULT',
 };
 
 const payChannels = [

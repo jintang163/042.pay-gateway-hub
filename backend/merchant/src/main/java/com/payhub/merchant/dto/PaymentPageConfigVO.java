@@ -29,7 +29,7 @@ public class PaymentPageConfigVO {
 
     private String buttonTextColor;
 
-    private String templateCode;
+    private String colorSchemeCode;
 
     private String customCss;
 

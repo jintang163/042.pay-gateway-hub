@@ -33,7 +33,7 @@ public class PaymentPageConfig implements Serializable {
 
     private String buttonTextColor;
 
-    private String templateCode;
+    private String colorSchemeCode;
 
     private String customCss;
 

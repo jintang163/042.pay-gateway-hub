@@ -19,7 +19,7 @@ export interface PaymentPageConfig {
   textColor?: string;
   buttonColor?: string;
   buttonTextColor?: string;
-  templateCode?: string;
+  colorSchemeCode?: string;
   customCss?: string;
   footerText?: string;
   returnUrl?: string;
@@ -40,7 +40,7 @@ export interface PaymentPageConfigSaveRequest {
   textColor?: string;
   buttonColor?: string;
   buttonTextColor?: string;
-  templateCode?: string;
+  colorSchemeCode?: string;
   customCss?: string;
   footerText?: string;
   returnUrl?: string;
