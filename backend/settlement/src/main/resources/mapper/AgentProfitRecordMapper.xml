@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.settlement.mapper.AgentProfitRecordMapper">
+
+    <resultMap id="AgentProfitRecordMap" type="com.payhub.settlement.entity.AgentProfitRecord">
+        <id column="id" property="id"/>
+        <result column="profit_no" property="profitNo"/>
+        <result column="order_no" property="orderNo"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="agent_merchant_no" property="agentMerchantNo"/>
+        <result column="agent_merchant_name" property="agentMerchantName"/>
+        <result column="agent_level" property="agentLevel"/>
+        <result column="order_amount" property="orderAmount"/>
+        <result column="fee_amount" property="feeAmount"/>
+        <result column="profit_amount" property="profitAmount"/>
+        <result column="commission_rate" property="commissionRate"/>
+        <result column="settle_date" property="settleDate"/>
+        <result column="profit_status" property="profitStatus"/>
+        <result column="settlement_id" property="settlementId"/>
+        <result column="settlement_no" property="settlementNo"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="AgentProfitRecordMap">
+        SELECT
+            id,
+            profit_no,
+            order_no,
+            merchant_no,
+            merchant_name,
+            agent_merchant_no,
+            agent_merchant_name,
+            agent_level,
+            order_amount,
+            fee_amount,
+            profit_amount,
+            commission_rate,
+            settle_date,
+            profit_status,
+            settlement_id,
+            settlement_no,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_record
+        <where>
+            deleted = 0
+            <if test="params.profitNo != null and params.profitNo != ''">
+                AND profit_no = #{params.profitNo}
+            </if>
+            <if test="params.orderNo != null and params.orderNo != ''">
+                AND order_no = #{params.orderNo}
+            </if>
+            <if test="params.merchantNo != null and params.merchantNo != ''">
+                AND merchant_no = #{params.merchantNo}
+            </if>
+            <if test="params.agentMerchantNo != null and params.agentMerchantNo != ''">
+                AND agent_merchant_no = #{params.agentMerchantNo}
+            </if>
+            <if test="params.agentLevel != null">
+                AND agent_level = #{params.agentLevel}
+            </if>
+            <if test="params.profitStatus != null">
+                AND profit_status = #{params.profitStatus}
+            </if>
+            <if test="params.settleDate != null and params.settleDate != ''">
+                AND settle_date = #{params.settleDate}
+            </if>
+            <if test="params.startDate != null and params.startDate != ''">
+                AND created_at <![CDATA[ >= ]]> #{params.startDate}
+            </if>
+            <if test="params.endDate != null and params.endDate != ''">
+                AND created_at <![CDATA[ <= ]]> #{params.endDate}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByAgentMerchantNo" resultMap="AgentProfitRecordMap">
+        SELECT
+            id,
+            profit_no,
+            order_no,
+            merchant_no,
+            merchant_name,
+            agent_merchant_no,
+            agent_merchant_name,
+            agent_level,
+            order_amount,
+            fee_amount,
+            profit_amount,
+            commission_rate,
+            settle_date,
+            profit_status,
+            settlement_id,
+            settlement_no,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_record
+        WHERE deleted = 0 AND agent_merchant_no = #{agentMerchantNo}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectTotalProfitByAgent" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(profit_amount), 0)
+        FROM agent_profit_record
+        WHERE deleted = 0
+          AND agent_merchant_no = #{agentMerchantNo}
+          <if test="profitStatus != null">
+              AND profit_status = #{profitStatus}
+          </if>
+    </select>
+
+    <select id="selectBySettleDate" resultMap="AgentProfitRecordMap">
+        SELECT
+            id,
+            profit_no,
+            order_no,
+            merchant_no,
+            merchant_name,
+            agent_merchant_no,
+            agent_merchant_name,
+            agent_level,
+            order_amount,
+            fee_amount,
+            profit_amount,
+            commission_rate,
+            settle_date,
+            profit_status,
+            settlement_id,
+            settlement_no,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_record
+        WHERE deleted = 0 AND settle_date = #{settleDate}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

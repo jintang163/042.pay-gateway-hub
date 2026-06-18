@@ -12,3 +12,4 @@ export { callbackSimulateApi } from './callbackSimulate';
 export { feeRuleApi } from './feeRule';
 export { paymentPageApi, colorSchemes } from './paymentPage';
 export { merchantConfigTestApi } from './merchantConfigTest';
+export { agentRelationApi, agentProfitRuleApi, agentProfitApi, agentWithdrawApi } from './agent';

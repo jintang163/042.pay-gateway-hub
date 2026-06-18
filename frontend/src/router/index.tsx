@@ -25,6 +25,10 @@ const FeeConfig = lazy(() => import('@/pages/FeeConfig'));
 const PaymentPageEditor = lazy(() => import('@/pages/PaymentPageEditor'));
 const PaymentPageH5 = lazy(() => import('@/pages/PaymentPageH5'));
 const MerchantConfigTest = lazy(() => import('@/pages/MerchantConfigTest'));
+const AgentTree = lazy(() => import('@/pages/AgentTree'));
+const SubordinateMerchant = lazy(() => import('@/pages/SubordinateMerchant'));
+const AgentProfit = lazy(() => import('@/pages/AgentProfit'));
+const AgentWithdraw = lazy(() => import('@/pages/AgentWithdraw'));
 
 export interface RouteConfigItem {
   path: string;
@@ -162,6 +166,33 @@ export const routesConfig: RouteConfigItem[] = [
     name: '支付页面定制',
     icon: 'PaletteOutlined',
     element: <PaymentPageEditor />,
+  },
+  {
+    path: 'agent',
+    name: '代理管理',
+    icon: 'TeamOutlined',
+    children: [
+      {
+        path: 'tree',
+        name: '代理关系图',
+        element: <AgentTree />,
+      },
+      {
+        path: 'subordinate',
+        name: '下级商户管理',
+        element: <SubordinateMerchant />,
+      },
+      {
+        path: 'profit',
+        name: '分润记录',
+        element: <AgentProfit />,
+      },
+      {
+        path: 'withdraw',
+        name: '佣金提现',
+        element: <AgentWithdraw />,
+      },
+    ],
   },
 ];
 

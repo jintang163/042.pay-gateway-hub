@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.settlement.mapper.AgentRelationMapper">
+
+    <resultMap id="AgentRelationMap" type="com.payhub.settlement.entity.AgentRelation">
+        <id column="id" property="id"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="parent_merchant_no" property="parentMerchantNo"/>
+        <result column="parent_merchant_name" property="parentMerchantName"/>
+        <result column="agent_level" property="agentLevel"/>
+        <result column="agent_path" property="agentPath"/>
+        <result column="commission_rate" property="commissionRate"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="AgentRelationMap">
+        SELECT
+            id,
+            merchant_no,
+            merchant_name,
+            parent_merchant_no,
+            parent_merchant_name,
+            agent_level,
+            agent_path,
+            commission_rate,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_relation
+        <where>
+            deleted = 0
+            <if test="params.merchantNo != null and params.merchantNo != ''">
+                AND merchant_no = #{params.merchantNo}
+            </if>
+            <if test="params.merchantName != null and params.merchantName != ''">
+                AND merchant_name LIKE CONCAT('%', #{params.merchantName}, '%')
+            </if>
+            <if test="params.parentMerchantNo != null and params.parentMerchantNo != ''">
+                AND parent_merchant_no = #{params.parentMerchantNo}
+            </if>
+            <if test="params.agentLevel != null">
+                AND agent_level = #{params.agentLevel}
+            </if>
+            <if test="params.status != null">
+                AND status = #{params.status}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByParentMerchantNo" resultMap="AgentRelationMap">
+        SELECT
+            id,
+            merchant_no,
+            merchant_name,
+            parent_merchant_no,
+            parent_merchant_name,
+            agent_level,
+            agent_path,
+            commission_rate,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_relation
+        WHERE deleted = 0 AND parent_merchant_no = #{parentMerchantNo}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectAllSubordinates" resultMap="AgentRelationMap">
+        SELECT
+            id,
+            merchant_no,
+            merchant_name,
+            parent_merchant_no,
+            parent_merchant_name,
+            agent_level,
+            agent_path,
+            commission_rate,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_relation
+        WHERE deleted = 0 AND agent_path LIKE CONCAT('%', #{merchantNo}, '%')
+        ORDER BY agent_level, created_at DESC
+    </select>
+
+    <select id="selectByMerchantNo" resultMap="AgentRelationMap">
+        SELECT
+            id,
+            merchant_no,
+            merchant_name,
+            parent_merchant_no,
+            parent_merchant_name,
+            agent_level,
+            agent_path,
+            commission_rate,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_relation
+        WHERE deleted = 0 AND merchant_no = #{merchantNo}
+        LIMIT 1
+    </select>
+
+</mapper>

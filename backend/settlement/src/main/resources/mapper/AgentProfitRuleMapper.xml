@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.settlement.mapper.AgentProfitRuleMapper">
+
+    <resultMap id="AgentProfitRuleMap" type="com.payhub.settlement.entity.AgentProfitRule">
+        <id column="id" property="id"/>
+        <result column="rule_no" property="ruleNo"/>
+        <result column="rule_name" property="ruleName"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="agent_level" property="agentLevel"/>
+        <result column="commission_rate" property="commissionRate"/>
+        <result column="min_commission" property="minCommission"/>
+        <result column="settle_type" property="settleType"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="AgentProfitRuleMap">
+        SELECT
+            id,
+            rule_no,
+            rule_name,
+            merchant_no,
+            merchant_name,
+            agent_level,
+            commission_rate,
+            min_commission,
+            settle_type,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_rule
+        <where>
+            deleted = 0
+            <if test="params.ruleNo != null and params.ruleNo != ''">
+                AND rule_no = #{params.ruleNo}
+            </if>
+            <if test="params.ruleName != null and params.ruleName != ''">
+                AND rule_name LIKE CONCAT('%', #{params.ruleName}, '%')
+            </if>
+            <if test="params.merchantNo != null and params.merchantNo != ''">
+                AND merchant_no = #{params.merchantNo}
+            </if>
+            <if test="params.agentLevel != null">
+                AND agent_level = #{params.agentLevel}
+            </if>
+            <if test="params.status != null">
+                AND status = #{params.status}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByMerchantNo" resultMap="AgentProfitRuleMap">
+        SELECT
+            id,
+            rule_no,
+            rule_name,
+            merchant_no,
+            merchant_name,
+            agent_level,
+            commission_rate,
+            min_commission,
+            settle_type,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_rule
+        WHERE deleted = 0 AND merchant_no = #{merchantNo}
+        ORDER BY agent_level ASC
+    </select>
+
+    <select id="selectByRuleNo" resultMap="AgentProfitRuleMap">
+        SELECT
+            id,
+            rule_no,
+            rule_name,
+            merchant_no,
+            merchant_name,
+            agent_level,
+            commission_rate,
+            min_commission,
+            settle_type,
+            status,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_rule
+        WHERE deleted = 0 AND rule_no = #{ruleNo}
+        LIMIT 1
+    </select>
+
+</mapper>
