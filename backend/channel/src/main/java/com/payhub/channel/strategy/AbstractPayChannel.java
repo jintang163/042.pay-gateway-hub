@@ -166,6 +166,9 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
         ChannelReconcileBill bill = new ChannelReconcileBill();
         bill.setPayChannel(getChannelCode());
         bill.setBillDate(billDate.toString());
+        if (StrUtil.isNotBlank(merchantNo)) {
+            bill.setMerchantNo(merchantNo);
+        }
 
         List<ChannelReconcileBill.ChannelReconcileItem> items = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
@@ -174,22 +177,34 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
         for (int i = 0; i < itemCount; i++) {
             ChannelReconcileBill.ChannelReconcileItem item = new ChannelReconcileBill.ChannelReconcileItem();
             BigDecimal amount = getDefaultAmount().multiply(new BigDecimal(1 + Math.random()));
-            item.setChannelTradeNo(generateChannelTradeNo());
-            item.setMerchantOrderNo("MCH" + billDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + String.format("%06d", i + 1));
-            item.setTradeAmount(amount);
+            String channelTradeNo = generateChannelTradeNo();
+            item.setChannelTradeNo(channelTradeNo);
+            item.setMerchantNo(StrUtil.isNotBlank(merchantNo) ? merchantNo : "M" + String.format("%06d", i + 1));
+            item.setMerchantOrderNo("MO" + billDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + String.format("%06d", i + 1));
+            item.setTradeAmount(amount.setScale(2, java.math.RoundingMode.HALF_UP));
             item.setTradeStatus(OrderStatusEnum.SUCCESS.getDesc());
             item.setTradeTime(LocalDateTime.of(billDate, java.time.LocalTime.of(9 + i, 0)));
-            item.setFeeAmount(amount.multiply(new BigDecimal("0.006")));
+            item.setFeeAmount(amount.multiply(new BigDecimal("0.006")).setScale(2, java.math.RoundingMode.HALF_UP));
             item.setBuyerAccount("buyer_" + i + "@example.com");
+
+            if (Math.random() < 0.08) {
+                item.setTradeAmount(amount.multiply(new BigDecimal("0.95")).setScale(2, java.math.RoundingMode.HALF_UP));
+            }
+            if (Math.random() < 0.05) {
+                item.setTradeStatus(OrderStatusEnum.FAILED.getDesc());
+            }
+
+            PAY_TIME_CACHE.put("BILL_" + channelTradeNo, item.getTradeTime());
+
             items.add(item);
-            totalAmount = totalAmount.add(amount);
+            totalAmount = totalAmount.add(item.getTradeAmount());
         }
 
         bill.setItems(items);
         bill.setTotalCount(items.size());
         bill.setTotalAmount(totalAmount);
 
-        log.info("[{}]对账单下载完成, 总笔数:{}, 总金额:{}", getChannelCode(), items.size(), totalAmount);
+        log.info("[{}]对账单下载完成, 商户:{}, 总笔数:{}, 总金额:{}", getChannelCode(), merchantNo, items.size(), totalAmount);
         return bill;
     }
 }

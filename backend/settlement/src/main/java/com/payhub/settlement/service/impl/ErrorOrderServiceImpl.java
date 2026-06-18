@@ -13,9 +13,7 @@ import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.pay.entity.PayOrder;
-import com.payhub.pay.entity.PayRefund;
 import com.payhub.pay.mapper.PayOrderMapper;
-import com.payhub.pay.mapper.PayRefundMapper;
 import com.payhub.pay.service.PayOrderService;
 import com.payhub.pay.service.PayRefundService;
 import com.payhub.settlement.dto.ErrorOrderApplyRequest;
@@ -45,9 +43,6 @@ public class ErrorOrderServiceImpl extends ServiceImpl<ErrorOrderMapper, ErrorOr
 
     @Autowired
     private PayOrderMapper payOrderMapper;
-
-    @Autowired
-    private PayRefundMapper payRefundMapper;
 
     @Autowired
     private PayOrderService payOrderService;
@@ -264,31 +259,54 @@ public class ErrorOrderServiceImpl extends ServiceImpl<ErrorOrderMapper, ErrorOr
             if (payOrder == null) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "平台订单不存在");
             }
+            if (StrUtil.isBlank(payOrder.getMerchantNo())) {
+                throw new BusinessException(ResultCode.FAIL, "订单缺少商户号，无法退款");
+            }
 
-            PayRefund refund = new PayRefund();
-            String refundNo = OrderNoGenerator.generateWithPrefix("RF");
-            refund.setRefundNo(refundNo);
-            refund.setOrderNo(payOrder.getOrderNo());
-            refund.setMerchantNo(payOrder.getMerchantNo());
-            refund.setMerchantRefundNo("ERR_REFUND_" + errorOrder.getErrorNo());
-            refund.setRefundAmount(errorOrder.getDiffAmount() != null && errorOrder.getDiffAmount().compareTo(BigDecimal.ZERO) > 0
-                    ? errorOrder.getDiffAmount().abs() : payOrder.getActualAmount());
-            refund.setRefundReason("差错退款-" + errorOrder.getErrorNo());
-            refund.setRefundStatus(com.payhub.common.enums.RefundStatusEnum.PROCESSING.getCode());
-            refund.setChannelTradeNo(payOrder.getChannelTradeNo());
-            payRefundMapper.insert(refund);
+            BigDecimal refundAmount = errorOrder.getDiffAmount() != null && errorOrder.getDiffAmount().compareTo(BigDecimal.ZERO) > 0
+                    ? errorOrder.getDiffAmount().abs() : payOrder.getActualAmount();
+
+            com.payhub.pay.dto.RefundRequest refundRequest = com.payhub.pay.dto.RefundRequest.builder()
+                    .orderNo(payOrder.getOrderNo())
+                    .merchantRefundNo("ERR_REFUND_" + errorOrder.getErrorNo())
+                    .refundAmount(refundAmount)
+                    .refundReason("差错退款-" + errorOrder.getErrorNo())
+                    .build();
+
+            com.payhub.pay.dto.RefundResponse refundResponse = payRefundService.applyRefund(refundRequest, null);
+
+            if (refundResponse == null) {
+                throw new BusinessException(ResultCode.FAIL, "退款服务返回空结果");
+            }
+
+            String refundNo = refundResponse.getRefundNo();
+            String channelRefundNo = refundResponse.getChannelRefundNo();
+            Integer refundStatus = refundResponse.getRefundStatus();
 
             errorOrder.setRefundNo(refundNo);
-            errorOrder.setErrorStatus(ErrorStatusEnum.SUCCESS.getCode());
+
+            if (com.payhub.common.enums.RefundStatusEnum.SUCCESS.getCode().equals(refundStatus)) {
+                errorOrder.setErrorStatus(ErrorStatusEnum.SUCCESS.getCode());
+                errorOrder.setHandleResult("退款成功, 退款单号: " + refundNo + ", 通道退款号: " + channelRefundNo);
+                updateDetailHandleStatus(errorOrder.getReconcileDetailId(), ReconcileHandleStatusEnum.PROCESSED, "退款成功", handleUserId, handleUserName);
+                log.info("差错退款成功, errorNo:{}, refundNo:{}, channelRefundNo:{}", errorOrder.getErrorNo(), refundNo, channelRefundNo);
+            } else if (com.payhub.common.enums.RefundStatusEnum.PROCESSING.getCode().equals(refundStatus)) {
+                errorOrder.setErrorStatus(ErrorStatusEnum.PROCESSING.getCode());
+                errorOrder.setHandleResult("退款处理中, 退款单号: " + refundNo + ", 通道退款号: " + (StrUtil.isNotBlank(channelRefundNo) ? channelRefundNo : "待返回"));
+                updateDetailHandleStatus(errorOrder.getReconcileDetailId(), ReconcileHandleStatusEnum.PROCESSING, "退款处理中", handleUserId, handleUserName);
+                log.info("差错退款处理中, errorNo:{}, refundNo:{}", errorOrder.getErrorNo(), refundNo);
+            } else {
+                errorOrder.setErrorStatus(ErrorStatusEnum.FAIL.getCode());
+                errorOrder.setHandleResult("退款失败, 退款单号: " + refundNo);
+                updateDetailHandleStatus(errorOrder.getReconcileDetailId(), ReconcileHandleStatusEnum.PENDING, "退款失败", handleUserId, handleUserName);
+                log.warn("差错退款失败, errorNo:{}, refundNo:{}, refundStatus:{}", errorOrder.getErrorNo(), refundNo, refundStatus);
+            }
+
             errorOrder.setHandleUserId(handleUserId);
             errorOrder.setHandleUserName(handleUserName);
             errorOrder.setHandleTime(LocalDateTime.now());
-            errorOrder.setHandleResult("退款处理中，退款单号: " + refundNo);
             this.updateById(errorOrder);
 
-            updateDetailHandleStatus(errorOrder.getReconcileDetailId(), ReconcileHandleStatusEnum.PROCESSED, "退款处理中", handleUserId, handleUserName);
-
-            log.info("退款处理成功, errorNo:{}, refundNo:{}", errorOrder.getErrorNo(), refundNo);
         } catch (Exception e) {
             log.error("退款处理失败, errorNo:{}", errorOrder.getErrorNo(), e);
             errorOrder.setErrorStatus(ErrorStatusEnum.FAIL.getCode());

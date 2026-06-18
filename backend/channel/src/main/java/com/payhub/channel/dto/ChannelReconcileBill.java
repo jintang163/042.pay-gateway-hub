@@ -16,6 +16,8 @@ public class ChannelReconcileBill implements Serializable {
 
     private String billDate;
 
+    private String merchantNo;
+
     private Integer totalCount;
 
     private BigDecimal totalAmount;
@@ -30,6 +32,8 @@ public class ChannelReconcileBill implements Serializable {
         private String channelTradeNo;
 
         private String merchantOrderNo;
+
+        private String merchantNo;
 
         private BigDecimal tradeAmount;
 

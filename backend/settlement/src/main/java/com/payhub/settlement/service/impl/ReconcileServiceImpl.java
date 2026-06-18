@@ -17,10 +17,11 @@ import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.settlement.dto.ReconcileVO;
+import com.payhub.settlement.entity.ErrorOrder;
 import com.payhub.settlement.entity.ReconcileDetail;
 import com.payhub.settlement.entity.ReconcileRecord;
-import com.payhub.settlement.enums.ReconcileDiffTypeEnum;
-import com.payhub.settlement.enums.ReconcileHandleStatusEnum;
+import com.payhub.settlement.enums.*;
+import com.payhub.settlement.mapper.ErrorOrderMapper;
 import com.payhub.settlement.mapper.ReconcileDetailMapper;
 import com.payhub.settlement.mapper.ReconcileRecordMapper;
 import com.payhub.settlement.service.ReconcileService;
@@ -44,6 +45,9 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
 
     @Autowired
     private ReconcileDetailMapper reconcileDetailMapper;
+
+    @Autowired
+    private ErrorOrderMapper errorOrderMapper;
 
     @Autowired
     private PayChannelStrategyFactory payChannelStrategyFactory;
@@ -127,22 +131,45 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
 
             Map<String, PayOrder> localOrderMap = new HashMap<>();
             Map<String, PayOrder> localChannelTradeNoMap = new HashMap<>();
+            Map<String, List<PayOrder>> localOrdersByMerchant = new HashMap<>();
             for (PayOrder order : localOrders) {
                 localOrderMap.put(order.getOrderNo(), order);
                 if (StrUtil.isNotBlank(order.getChannelTradeNo())) {
                     localChannelTradeNoMap.put(order.getChannelTradeNo(), order);
                 }
+                String mchNo = StrUtil.isNotBlank(order.getMerchantNo()) ? order.getMerchantNo() : "UNKNOWN";
+                localOrdersByMerchant.computeIfAbsent(mchNo, k -> new ArrayList<>()).add(order);
             }
 
             PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(payChannel);
-            ChannelReconcileBill channelBill = strategy.downloadReconcileBill(reconcileDate, null);
-            List<ChannelReconcileBill.ChannelReconcileItem> channelItems = channelBill != null && channelBill.getItems() != null
-                    ? channelBill.getItems() : Collections.emptyList();
 
-            log.info("渠道对账单数量: {}, 渠道: {}, 日期: {}", channelItems.size(), payChannel, reconcileDate);
+            List<ChannelReconcileBill.ChannelReconcileItem> allChannelItems = new ArrayList<>();
+
+            if (localOrdersByMerchant.isEmpty()) {
+                ChannelReconcileBill channelBill = strategy.downloadReconcileBill(reconcileDate, null);
+                if (channelBill != null && channelBill.getItems() != null) {
+                    allChannelItems.addAll(channelBill.getItems());
+                }
+            } else {
+                for (Map.Entry<String, List<PayOrder>> entry : localOrdersByMerchant.entrySet()) {
+                    String merchantNo = entry.getKey();
+                    try {
+                        ChannelReconcileBill channelBill = strategy.downloadReconcileBill(reconcileDate, merchantNo);
+                        if (channelBill != null && channelBill.getItems() != null) {
+                            allChannelItems.addAll(channelBill.getItems());
+                        }
+                        log.info("拉取商户 {} 对账单成功, 笔数: {}", merchantNo,
+                                channelBill != null && channelBill.getItems() != null ? channelBill.getItems().size() : 0);
+                    } catch (Exception e) {
+                        log.warn("拉取商户 {} 对账单失败: {}", merchantNo, e.getMessage());
+                    }
+                }
+            }
+
+            log.info("渠道对账单总数量: {}, 渠道: {}, 日期: {}", allChannelItems.size(), payChannel, reconcileDate);
 
             Map<String, ChannelReconcileBill.ChannelReconcileItem> channelItemMap = new HashMap<>();
-            for (ChannelReconcileBill.ChannelReconcileItem item : channelItems) {
+            for (ChannelReconcileBill.ChannelReconcileItem item : allChannelItems) {
                 if (StrUtil.isNotBlank(item.getChannelTradeNo())) {
                     channelItemMap.put(item.getChannelTradeNo(), item);
                 }
@@ -170,13 +197,20 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
                     mismatchDetails.add(detail);
                     mismatchCount++;
                 } else {
-                    boolean amountMatch = compareAmount(localOrder.getActualAmount(), channelItem.getTradeAmount());
-                    boolean statusMatch = true;
+                    boolean amountMatch = compareAmount(
+                            localOrder.getActualAmount() != null ? localOrder.getActualAmount() : localOrder.getPayAmount(),
+                            channelItem.getTradeAmount());
+                    boolean statusMatch = compareStatus(localOrder.getPayStatus(), channelItem.getTradeStatus());
 
                     if (!amountMatch || !statusMatch) {
-                        ReconcileDiffTypeEnum diffType = !amountMatch
-                                ? ReconcileDiffTypeEnum.AMOUNT_MISMATCH
-                                : ReconcileDiffTypeEnum.STATUS_MISMATCH;
+                        ReconcileDiffTypeEnum diffType;
+                        if (!amountMatch && !statusMatch) {
+                            diffType = ReconcileDiffTypeEnum.AMOUNT_MISMATCH;
+                        } else if (!amountMatch) {
+                            diffType = ReconcileDiffTypeEnum.AMOUNT_MISMATCH;
+                        } else {
+                            diffType = ReconcileDiffTypeEnum.STATUS_MISMATCH;
+                        }
                         ReconcileDetail detail = buildReconcileDetail(record.getReconcileNo(), reconcileDate, payChannel,
                                 diffType, localOrder, channelItem);
                         mismatchDetails.add(detail);
@@ -230,8 +264,15 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
             if (CollUtil.isNotEmpty(mismatchDetails)) {
                 for (ReconcileDetail detail : mismatchDetails) {
                     reconcileDetailMapper.insert(detail);
+
+                    ErrorOrder errorOrder = buildAutoErrorOrder(record.getReconcileNo(), detail);
+                    errorOrderMapper.insert(errorOrder);
+
+                    detail.setErrorOrderNo(errorOrder.getErrorNo());
+                    detail.setHandleStatus(ReconcileHandleStatusEnum.PROCESSING.getCode());
+                    reconcileDetailMapper.updateById(detail);
                 }
-                log.info("保存差异明细 {} 条, 对账单号: {}", mismatchDetails.size(), record.getReconcileNo());
+                log.info("保存差异明细 {} 条并自动生成差错单, 对账单号: {}", mismatchDetails.size(), record.getReconcileNo());
             }
 
             record.setTotalCount(totalCount);
@@ -302,6 +343,79 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
             return false;
         }
         return localAmount.compareTo(channelAmount) == 0;
+    }
+
+    private boolean compareStatus(Integer localPayStatus, String channelTradeStatus) {
+        if (localPayStatus == null && StrUtil.isBlank(channelTradeStatus)) {
+            return true;
+        }
+        if (localPayStatus == null || StrUtil.isBlank(channelTradeStatus)) {
+            return false;
+        }
+        PayStatusEnum localStatusEnum = PayStatusEnum.getByCode(localPayStatus);
+        if (localStatusEnum == null) {
+            return false;
+        }
+        String normalizedChannel = channelTradeStatus.toUpperCase().trim();
+        switch (localStatusEnum) {
+            case SUCCESS:
+                return "SUCCESS".equals(normalizedChannel) || "支付成功".equals(channelTradeStatus);
+            case FAIL:
+                return "FAILED".equals(normalizedChannel) || "支付失败".equals(channelTradeStatus);
+            case PENDING:
+                return "PENDING".equals(normalizedChannel) || "待支付".equals(channelTradeStatus);
+            case CLOSED:
+                return "CLOSED".equals(normalizedChannel) || "订单关闭".equals(channelTradeStatus);
+            case REFUNDING:
+                return "REFUNDING".equals(normalizedChannel) || "退款中".equals(channelTradeStatus);
+            case REFUNDED:
+                return "REFUNDED".equals(normalizedChannel) || "已退款".equals(channelTradeStatus);
+            default:
+                return false;
+        }
+    }
+
+    private ErrorOrder buildAutoErrorOrder(String reconcileNo, ReconcileDetail detail) {
+        ErrorOrder errorOrder = new ErrorOrder();
+        errorOrder.setErrorNo(OrderNoGenerator.generateWithPrefix("ERR"));
+        errorOrder.setReconcileNo(reconcileNo);
+        errorOrder.setReconcileDetailId(detail.getId());
+        errorOrder.setPayChannel(detail.getPayChannel());
+        errorOrder.setErrorType(detail.getDiffType());
+        errorOrder.setOrderNo(detail.getOrderNo());
+        errorOrder.setMerchantNo(detail.getMerchantNo());
+        errorOrder.setChannelTradeNo(detail.getChannelTradeNo());
+        errorOrder.setOrderAmount(detail.getLocalAmount());
+        errorOrder.setActualAmount(detail.getChannelAmount());
+        errorOrder.setDiffAmount(detail.getDiffAmount());
+        errorOrder.setErrorStatus(ErrorStatusEnum.PENDING.getCode());
+        errorOrder.setAuditStatus(AuditStatusEnum.PENDING.getCode());
+        errorOrder.setApplyUserId("SYSTEM");
+        errorOrder.setApplyUserName("系统自动");
+        errorOrder.setApplyTime(LocalDateTime.now());
+        errorOrder.setApplyRemark("对账差异自动生成差错单");
+
+        ReconcileDiffTypeEnum diffTypeEnum = ReconcileDiffTypeEnum.getByCode(detail.getDiffType());
+        if (diffTypeEnum != null) {
+            switch (diffTypeEnum) {
+                case LONG_FUND:
+                    errorOrder.setHandleType(ErrorHandleTypeEnum.IGNORE.getCode());
+                    break;
+                case SHORT_FUND:
+                    errorOrder.setHandleType(ErrorHandleTypeEnum.SUPPLEMENT.getCode());
+                    break;
+                case AMOUNT_MISMATCH:
+                    errorOrder.setHandleType(ErrorHandleTypeEnum.ADJUST.getCode());
+                    break;
+                case STATUS_MISMATCH:
+                    errorOrder.setHandleType(ErrorHandleTypeEnum.ADJUST.getCode());
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return errorOrder;
     }
 
     private ReconcileVO convertToVO(ReconcileRecord record) {
