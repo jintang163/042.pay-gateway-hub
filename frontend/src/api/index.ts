@@ -4,7 +4,7 @@ export { orderApi } from './order';
 export { refundApi } from './refund';
 export { merchantApi } from './merchant';
 export { payConfigApi } from './payConfig';
-export { settlementApi, splitRuleApi, splitDetailApi, reconcileApi } from './settlement';
+export { settlementApi, splitRuleApi, splitDetailApi, reconcileApi, reconcileDetailApi, errorOrderApi } from './settlement';
 export { riskApi } from './risk';
 export { sandboxApi } from './sandbox';
 export { apiStatsApi } from './apiStats';

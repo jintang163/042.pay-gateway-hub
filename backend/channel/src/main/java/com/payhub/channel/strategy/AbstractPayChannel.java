@@ -11,7 +11,10 @@ import com.payhub.channel.enums.RefundStatusEnum;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -154,5 +157,39 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
         }
         log.info("[{}]沙箱模式，回调验签默认通过", getChannelCode());
         return true;
+    }
+
+    @Override
+    public ChannelReconcileBill downloadReconcileBill(LocalDate billDate, String merchantNo) {
+        log.info("[{}]开始下载对账单, 日期:{}, 商户:{}", getChannelCode(), billDate, merchantNo);
+
+        ChannelReconcileBill bill = new ChannelReconcileBill();
+        bill.setPayChannel(getChannelCode());
+        bill.setBillDate(billDate.toString());
+
+        List<ChannelReconcileBill.ChannelReconcileItem> items = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        int itemCount = 3 + (int) (Math.random() * 5);
+        for (int i = 0; i < itemCount; i++) {
+            ChannelReconcileBill.ChannelReconcileItem item = new ChannelReconcileBill.ChannelReconcileItem();
+            BigDecimal amount = getDefaultAmount().multiply(new BigDecimal(1 + Math.random()));
+            item.setChannelTradeNo(generateChannelTradeNo());
+            item.setMerchantOrderNo("MCH" + billDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + String.format("%06d", i + 1));
+            item.setTradeAmount(amount);
+            item.setTradeStatus(OrderStatusEnum.SUCCESS.getDesc());
+            item.setTradeTime(LocalDateTime.of(billDate, java.time.LocalTime.of(9 + i, 0)));
+            item.setFeeAmount(amount.multiply(new BigDecimal("0.006")));
+            item.setBuyerAccount("buyer_" + i + "@example.com");
+            items.add(item);
+            totalAmount = totalAmount.add(amount);
+        }
+
+        bill.setItems(items);
+        bill.setTotalCount(items.size());
+        bill.setTotalAmount(totalAmount);
+
+        log.info("[{}]对账单下载完成, 总笔数:{}, 总金额:{}", getChannelCode(), items.size(), totalAmount);
+        return bill;
     }
 }

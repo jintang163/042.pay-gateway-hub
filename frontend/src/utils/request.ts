@@ -2,6 +2,7 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse,
 import { message } from 'antd';
 import type { ApiResponse } from '@/types/common';
 import { useUserStore } from '@/store/userStore';
+import { downloadFile } from '@/utils';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const TOKEN_KEY = 'access_token';
@@ -42,8 +43,11 @@ service.interceptors.request.use(
 );
 
 service.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse>) => {
-    const res = response.data;
+  (response: AxiosResponse<ApiResponse | Blob>) => {
+    if (response.config.responseType === 'blob') {
+      return response;
+    }
+    const res = response.data as ApiResponse;
     if (res.code !== 0 && res.code !== 200) {
       message.error(res.message || '请求失败');
       return Promise.reject(new Error(res.message || 'Error'));
@@ -133,12 +137,31 @@ export const request = {
       ...config,
     });
   },
-  download(url: string, params?: unknown, config?: AxiosRequestConfig): Promise<void> {
-    return service.get(url, {
+  async download(url: string, params?: unknown, config?: AxiosRequestConfig): Promise<void> {
+    const response = await service.get(url, {
       params,
       responseType: 'blob',
       ...config,
     });
+    const blob = response.data as Blob;
+    const disposition = response.headers['content-disposition'];
+    let filename = `download_${Date.now()}`;
+    if (disposition) {
+      const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (match && match[1]) {
+        filename = match[1].replace(/['"]/g, '');
+        try {
+          filename = decodeURIComponent(filename);
+        } catch {
+          // ignore decode error
+        }
+      }
+    }
+    if (blob.type.includes('text/csv') && !filename.endsWith('.csv')) {
+      filename += '.csv';
+    }
+    downloadFile(blob, filename);
+    message.success('文件下载成功');
   },
 };
 

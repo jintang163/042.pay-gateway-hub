@@ -12,6 +12,7 @@ const PayConfig = lazy(() => import('@/pages/PayConfig'));
 const OrderList = lazy(() => import('@/pages/OrderList'));
 const RefundList = lazy(() => import('@/pages/RefundList'));
 const Settlement = lazy(() => import('@/pages/Settlement'));
+const Reconcile = lazy(() => import('@/pages/Reconcile'));
 const RiskMonitor = lazy(() => import('@/pages/RiskMonitor'));
 const RiskRuleConfig = lazy(() => import('@/pages/RiskRuleConfig'));
 const RiskListManage = lazy(() => import('@/pages/RiskListManage'));
@@ -75,7 +76,18 @@ export const routesConfig: RouteConfigItem[] = [
     path: 'settlement',
     name: '结算管理',
     icon: 'WalletOutlined',
-    element: <Settlement />,
+    children: [
+      {
+        path: 'list',
+        name: '结算记录',
+        element: <Settlement />,
+      },
+      {
+        path: 'reconcile',
+        name: '对账与差错',
+        element: <Reconcile />,
+      },
+    ],
   },
   {
     path: 'risk',

@@ -477,7 +477,97 @@ CREATE TABLE IF NOT EXISTS `reconcile_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对账记录表';
 
 -- -----------------------------------------------
--- 10. API访问日志表
+-- 12. 对账差异明细表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `reconcile_detail` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `detail_no` VARCHAR(64) NOT NULL COMMENT '差异明细单号',
+  `reconcile_no` VARCHAR(64) NOT NULL COMMENT '对账单号',
+  `reconcile_date` DATE NOT NULL COMMENT '对账日期',
+  `pay_channel` VARCHAR(32) NOT NULL COMMENT '支付渠道：alipay/wechat/unionpay',
+  `diff_type` TINYINT NOT NULL COMMENT '差异类型：1长款(渠道有本地无) 2短款(本地有渠道无) 3金额不一致 4状态不一致',
+  `order_no` VARCHAR(64) DEFAULT NULL COMMENT '平台订单号',
+  `merchant_no` VARCHAR(32) DEFAULT NULL COMMENT '商户编号',
+  `channel_trade_no` VARCHAR(128) DEFAULT NULL COMMENT '渠道交易流水号',
+  `local_amount` BIGINT DEFAULT NULL COMMENT '本地金额(分)',
+  `channel_amount` BIGINT DEFAULT NULL COMMENT '渠道金额(分)',
+  `diff_amount` BIGINT DEFAULT NULL COMMENT '差异金额(分)',
+  `local_status` TINYINT DEFAULT NULL COMMENT '本地支付状态',
+  `channel_status` VARCHAR(32) DEFAULT NULL COMMENT '渠道支付状态',
+  `local_pay_time` DATETIME DEFAULT NULL COMMENT '本地支付时间',
+  `channel_pay_time` DATETIME DEFAULT NULL COMMENT '渠道支付时间',
+  `error_order_no` VARCHAR(64) DEFAULT NULL COMMENT '关联差错单号',
+  `handle_status` TINYINT NOT NULL DEFAULT 0 COMMENT '处理状态：0待处理 1处理中 2已处理 3忽略',
+  `handle_remark` VARCHAR(512) DEFAULT NULL COMMENT '处理备注',
+  `handle_user_id` VARCHAR(64) DEFAULT NULL COMMENT '处理人ID',
+  `handle_user_name` VARCHAR(64) DEFAULT NULL COMMENT '处理人姓名',
+  `handle_time` DATETIME DEFAULT NULL COMMENT '处理时间',
+  `extra_info` JSON DEFAULT NULL COMMENT '扩展信息(JSON)',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_detail_no` (`detail_no`),
+  KEY `idx_reconcile_no` (`reconcile_no`),
+  KEY `idx_reconcile_date` (`reconcile_date`),
+  KEY `idx_pay_channel` (`pay_channel`),
+  KEY `idx_diff_type` (`diff_type`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_channel_trade_no` (`channel_trade_no`),
+  KEY `idx_handle_status` (`handle_status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对账差异明细表';
+
+-- -----------------------------------------------
+-- 13. 差错单表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `error_order` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `error_no` VARCHAR(64) NOT NULL COMMENT '差错单号',
+  `reconcile_no` VARCHAR(64) DEFAULT NULL COMMENT '关联对账单号',
+  `reconcile_detail_id` BIGINT DEFAULT NULL COMMENT '关联差异明细ID',
+  `pay_channel` VARCHAR(32) NOT NULL COMMENT '支付渠道：alipay/wechat/unionpay',
+  `error_type` TINYINT NOT NULL COMMENT '差错类型：1长款 2短款 3金额差异 4状态差异',
+  `handle_type` TINYINT DEFAULT NULL COMMENT '处理方式：1补单 2退款 3调账 4忽略',
+  `order_no` VARCHAR(64) DEFAULT NULL COMMENT '平台订单号',
+  `merchant_no` VARCHAR(32) DEFAULT NULL COMMENT '商户编号',
+  `channel_trade_no` VARCHAR(128) DEFAULT NULL COMMENT '渠道交易流水号',
+  `order_amount` BIGINT DEFAULT NULL COMMENT '订单金额(分)',
+  `actual_amount` BIGINT DEFAULT NULL COMMENT '实际金额(分)',
+  `diff_amount` BIGINT DEFAULT NULL COMMENT '差异金额(分)',
+  `error_status` TINYINT NOT NULL DEFAULT 0 COMMENT '差错状态：0待处理 1处理中 2处理成功 3处理失败 4已关闭',
+  `apply_user_id` VARCHAR(64) DEFAULT NULL COMMENT '申请人ID',
+  `apply_user_name` VARCHAR(64) DEFAULT NULL COMMENT '申请人姓名',
+  `apply_time` DATETIME DEFAULT NULL COMMENT '申请时间',
+  `apply_remark` VARCHAR(512) DEFAULT NULL COMMENT '申请备注',
+  `audit_user_id` VARCHAR(64) DEFAULT NULL COMMENT '审核人ID',
+  `audit_user_name` VARCHAR(64) DEFAULT NULL COMMENT '审核人姓名',
+  `audit_time` DATETIME DEFAULT NULL COMMENT '审核时间',
+  `audit_remark` VARCHAR(512) DEFAULT NULL COMMENT '审核备注',
+  `audit_status` TINYINT DEFAULT NULL COMMENT '审核状态：0待审核 1审核通过 2审核拒绝',
+  `handle_user_id` VARCHAR(64) DEFAULT NULL COMMENT '处理人ID',
+  `handle_user_name` VARCHAR(64) DEFAULT NULL COMMENT '处理人姓名',
+  `handle_time` DATETIME DEFAULT NULL COMMENT '处理完成时间',
+  `handle_result` VARCHAR(512) DEFAULT NULL COMMENT '处理结果',
+  `refund_no` VARCHAR(64) DEFAULT NULL COMMENT '关联退款单号',
+  `new_order_no` VARCHAR(64) DEFAULT NULL COMMENT '补单生成的新订单号',
+  `extra_info` JSON DEFAULT NULL COMMENT '扩展信息(JSON)',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_error_no` (`error_no`),
+  KEY `idx_reconcile_no` (`reconcile_no`),
+  KEY `idx_reconcile_detail_id` (`reconcile_detail_id`),
+  KEY `idx_pay_channel` (`pay_channel`),
+  KEY `idx_error_type` (`error_type`),
+  KEY `idx_error_status` (`error_status`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_audit_status` (`audit_status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='差错单表';
+
+-- -----------------------------------------------
+-- 14. API访问日志表
 -- -----------------------------------------------
 CREATE TABLE IF NOT EXISTS `api_access_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',

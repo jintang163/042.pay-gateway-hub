@@ -11,6 +11,18 @@ import type {
   SplitDetailQueryParams,
   SplitDetailListResult,
   SplitCalculateRequest,
+  Reconcile,
+  ReconcileQueryParams,
+  ReconcileListResult,
+  ReconcileDetail,
+  ReconcileDetailQueryParams,
+  ReconcileDetailListResult,
+  ReconcileSummary,
+  ErrorOrder,
+  ErrorOrderQueryParams,
+  ErrorOrderListResult,
+  ErrorOrderApplyRequest,
+  ErrorOrderAuditRequest,
 } from '@/types/settlement';
 
 export const settlementApi = {
@@ -80,23 +92,128 @@ export const splitDetailApi = {
 };
 
 export const reconcileApi = {
-  list: (params: { pageNum: number; pageSize: number; merchantId?: string; date?: string; status?: string }) => {
-    return request.get<{ list: unknown[]; total: number }>('/api/reconcile/list', params);
+  list: (params: ReconcileQueryParams) => {
+    return request.get<ReconcileListResult>('/api/settlement/reconcile/list', {
+      current: params.pageNum,
+      size: params.pageSize,
+      payChannel: params.payChannel,
+      reconcileDate: params.reconcileDate,
+      reconcileStatus: params.reconcileStatus,
+    });
   },
 
-  detail: (id: string) => {
-    return request.get<unknown>(`/api/reconcile/${id}`);
+  detail: (reconcileNo: string) => {
+    return request.get<Reconcile>(`/api/settlement/reconcile/${reconcileNo}`);
   },
 
-  generate: (data: { merchantId: string; date: string }) => {
-    return request.post<{ id: string; reconcileNo: string }>('/api/reconcile/generate', data);
+  execute: (data: { payChannel: string; reconcileDate: string }) => {
+    return request.post<void>('/api/settlement/reconcile/execute', null, {
+      params: data,
+    });
   },
 
-  create: (data: { merchantId: string; date: string }) => {
-    return request.post<{ id: string; reconcileNo: string }>('/api/reconcile/generate', data);
+  summary: (params: { reconcileNo?: string; reconcileDate?: string; payChannel?: string }) => {
+    return request.get<ReconcileSummary>('/api/settlement/reconcile/summary', params);
   },
 
-  download: (id: string) => {
-    return request.download(`/api/reconcile/${id}/download`);
+  export: (params: Record<string, unknown>) => {
+    return request.download('/api/settlement/reconcile/export', params);
+  },
+};
+
+export const reconcileDetailApi = {
+  list: (params: ReconcileDetailQueryParams) => {
+    return request.get<ReconcileDetailListResult>('/api/settlement/reconcile-detail/list', {
+      current: params.pageNum,
+      size: params.pageSize,
+      reconcileNo: params.reconcileNo,
+      reconcileDate: params.reconcileDate,
+      payChannel: params.payChannel,
+      diffType: params.diffType,
+      handleStatus: params.handleStatus,
+      orderNo: params.orderNo,
+      merchantNo: params.merchantNo,
+      channelTradeNo: params.channelTradeNo,
+    });
+  },
+
+  listByReconcile: (reconcileNo: string) => {
+    return request.get<ReconcileDetail[]>(`/api/settlement/reconcile-detail/list-by-reconcile/${reconcileNo}`);
+  },
+
+  handle: (data: { detailId: number; handleStatus: number; handleRemark?: string; handleUserId?: string; handleUserName?: string }) => {
+    return request.post<void>('/api/settlement/reconcile-detail/handle', null, { params: data });
+  },
+
+  ignore: (detailId: number, handleRemark?: string, handleUserId?: string, handleUserName?: string) => {
+    return request.post<void>(`/api/settlement/reconcile-detail/ignore/${detailId}`, null, {
+      params: { handleRemark, handleUserId, handleUserName },
+    });
+  },
+};
+
+export const errorOrderApi = {
+  list: (params: ErrorOrderQueryParams) => {
+    return request.get<ErrorOrderListResult>('/api/settlement/error-order/list', {
+      current: params.pageNum,
+      size: params.pageSize,
+      errorNo: params.errorNo,
+      reconcileNo: params.reconcileNo,
+      payChannel: params.payChannel,
+      errorType: params.errorType,
+      errorStatus: params.errorStatus,
+      auditStatus: params.auditStatus,
+      handleType: params.handleType,
+      orderNo: params.orderNo,
+      merchantNo: params.merchantNo,
+    });
+  },
+
+  detail: (errorNo: string) => {
+    return request.get<ErrorOrder>(`/api/settlement/error-order/${errorNo}`);
+  },
+
+  getById: (id: number) => {
+    return request.get<ErrorOrder>(`/api/settlement/error-order/id/${id}`);
+  },
+
+  listByDetail: (detailId: number) => {
+    return request.get<ErrorOrder[]>(`/api/settlement/error-order/list-by-detail/${detailId}`);
+  },
+
+  apply: (data: ErrorOrderApplyRequest, applyUserId?: string, applyUserName?: string) => {
+    return request.post<ErrorOrder>('/api/settlement/error-order/apply', data, {
+      params: { applyUserId, applyUserName },
+    });
+  },
+
+  audit: (data: ErrorOrderAuditRequest, auditUserId?: string, auditUserName?: string) => {
+    return request.post<ErrorOrder>('/api/settlement/error-order/audit', data, {
+      params: { auditUserId, auditUserName },
+    });
+  },
+
+  processSupplement: (id: number, handleUserId?: string, handleUserName?: string) => {
+    return request.post<ErrorOrder>(`/api/settlement/error-order/process-supplement/${id}`, null, {
+      params: { handleUserId, handleUserName },
+    });
+  },
+
+  processRefund: (id: number, handleUserId?: string, handleUserName?: string) => {
+    return request.post<ErrorOrder>(`/api/settlement/error-order/process-refund/${id}`, null, {
+      params: { handleUserId, handleUserName },
+    });
+  },
+
+  processAdjust: (id: number, handleUserId?: string, handleUserName?: string) => {
+    return request.post<ErrorOrder>(`/api/settlement/error-order/process-adjust/${id}`, null, {
+      params: { handleUserId, handleUserName },
+    });
+  },
+
+  processIgnore: (id: number, handleUserId?: string, handleUserName?: string) => {
+    return request.post<ErrorOrder>(`/api/settlement/error-order/process-ignore/${id}`, null, {
+      params: { handleUserId, handleUserName },
+    });
   },
 };

@@ -2,6 +2,7 @@ package com.payhub.channel.strategy;
 
 import com.payhub.channel.dto.*;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 public interface PayChannelStrategy {
@@ -17,4 +18,6 @@ public interface PayChannelStrategy {
     NotifyResult parseNotify(String notifyData, Map<String, String> params);
 
     boolean verifyNotify(Map<String, String> params);
+
+    ChannelReconcileBill downloadReconcileBill(LocalDate billDate, String merchantNo);
 }
