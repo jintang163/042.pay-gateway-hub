@@ -20,6 +20,7 @@ const RiskListManage = lazy(() => import('@/pages/RiskListManage'));
 const RiskAudit = lazy(() => import('@/pages/RiskAudit'));
 const SandboxTest = lazy(() => import('@/pages/SandboxTest'));
 const ApiStats = lazy(() => import('@/pages/ApiStats'));
+const CallbackSimulator = lazy(() => import('@/pages/CallbackSimulator'));
 
 export interface RouteConfigItem {
   path: string;
@@ -127,6 +128,12 @@ export const routesConfig: RouteConfigItem[] = [
     name: '沙箱测试',
     icon: 'ExperimentOutlined',
     element: <SandboxTest />,
+  },
+  {
+    path: 'callback-simulator',
+    name: '回调模拟',
+    icon: 'BulbOutlined',
+    element: <CallbackSimulator />,
   },
   {
     path: 'api-stats',

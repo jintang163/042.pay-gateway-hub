@@ -616,3 +616,38 @@ CREATE TABLE IF NOT EXISTS `sandbox_test_record` (
   KEY `idx_test_result` (`test_result`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='沙箱测试记录表';
+
+-- -----------------------------------------------
+-- 15. 回调模拟日志表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `callback_simulate_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `log_no` VARCHAR(64) NOT NULL COMMENT '日志编号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
+  `merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '商户名称',
+  `order_no` VARCHAR(64) DEFAULT NULL COMMENT '关联订单号',
+  `callback_url` VARCHAR(512) NOT NULL COMMENT '回调地址',
+  `callback_type` VARCHAR(32) NOT NULL DEFAULT 'PAY' COMMENT '回调类型：PAY支付/REFUND退款',
+  `simulate_status` VARCHAR(16) NOT NULL COMMENT '模拟状态：SUCCESS成功/FAIL失败',
+  `sign_type` VARCHAR(16) NOT NULL DEFAULT 'MD5' COMMENT '签名类型：MD5/RSA/SM2',
+  `request_headers` JSON DEFAULT NULL COMMENT '请求头（JSON）',
+  `request_body` TEXT DEFAULT NULL COMMENT '请求体（JSON）',
+  `response_http_status` INT DEFAULT NULL COMMENT '响应HTTP状态码',
+  `response_body` TEXT DEFAULT NULL COMMENT '响应体',
+  `response_time_ms` INT DEFAULT NULL COMMENT '响应耗时（毫秒）',
+  `callback_status` TINYINT NOT NULL DEFAULT 0 COMMENT '回调状态：0待发送 1发送成功 2发送失败 3已重发',
+  `retry_count` INT NOT NULL DEFAULT 0 COMMENT '重试次数',
+  `operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_log_no` (`log_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_callback_type` (`callback_type`),
+  KEY `idx_simulate_status` (`simulate_status`),
+  KEY `idx_callback_status` (`callback_status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回调模拟日志表';
