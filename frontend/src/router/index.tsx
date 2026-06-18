@@ -21,6 +21,7 @@ const RiskAudit = lazy(() => import('@/pages/RiskAudit'));
 const SandboxTest = lazy(() => import('@/pages/SandboxTest'));
 const ApiStats = lazy(() => import('@/pages/ApiStats'));
 const CallbackSimulator = lazy(() => import('@/pages/CallbackSimulator'));
+const FeeConfig = lazy(() => import('@/pages/FeeConfig'));
 
 export interface RouteConfigItem {
   path: string;
@@ -134,6 +135,12 @@ export const routesConfig: RouteConfigItem[] = [
     name: '回调模拟',
     icon: 'BulbOutlined',
     element: <CallbackSimulator />,
+  },
+  {
+    path: 'fee-config',
+    name: '手续费配置',
+    icon: 'MoneyCollectOutlined',
+    element: <FeeConfig />,
   },
   {
     path: 'api-stats',

@@ -1,0 +1,43 @@
+package com.payhub.merchant.dto;
+
+import lombok.Data;
+
+import java.math.BigDecimal;
+
+@Data
+public class FeeRuleVO {
+
+    private Long id;
+
+    private String ruleNo;
+
+    private String industryCode;
+
+    private String industryName;
+
+    private String payChannel;
+
+    private String payChannelDesc;
+
+    private Long minAmount;
+
+    private Long maxAmount;
+
+    private BigDecimal feeRate;
+
+    private Long minFee;
+
+    private Long maxFee;
+
+    private Integer priority;
+
+    private Integer status;
+
+    private String statusDesc;
+
+    private String operatorName;
+
+    private String remark;
+
+    private String createdAt;
+}

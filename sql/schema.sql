@@ -651,3 +651,34 @@ CREATE TABLE IF NOT EXISTS `callback_simulate_log` (
   KEY `idx_callback_status` (`callback_status`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回调模拟日志表';
+
+-- -----------------------------------------------
+-- 16. 动态手续费规则表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `fee_rule` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `rule_no` VARCHAR(32) NOT NULL COMMENT '规则编号',
+  `industry_code` VARCHAR(64) NOT NULL COMMENT '行业编码',
+  `industry_name` VARCHAR(128) NOT NULL COMMENT '行业名称',
+  `pay_channel` VARCHAR(32) DEFAULT NULL COMMENT '支付渠道（空=全部渠道）',
+  `min_amount` BIGINT NOT NULL DEFAULT 0 COMMENT '金额区间最小值（分，含）',
+  `max_amount` BIGINT NOT NULL DEFAULT 999999999999 COMMENT '金额区间最大值（分，含）',
+  `fee_rate` DECIMAL(10,6) NOT NULL COMMENT '费率(小数，如0.006=0.6%)',
+  `min_fee` BIGINT DEFAULT 0 COMMENT '单笔最低手续费（分）',
+  `max_fee` BIGINT DEFAULT NULL COMMENT '单笔最高手续费（分，空=不限制）',
+  `priority` INT NOT NULL DEFAULT 0 COMMENT '优先级（数字越大优先级越高）',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0禁用 1启用',
+  `operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rule_no` (`rule_no`),
+  KEY `idx_industry_code` (`industry_code`),
+  KEY `idx_pay_channel` (`pay_channel`),
+  KEY `idx_amount_range` (`min_amount`, `max_amount`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='动态手续费规则表';
