@@ -1,5 +1,3 @@
-import type { PageParams, PageResult } from './common';
-
 export type CallbackType = 'PAY' | 'REFUND';
 
 export type SimulateStatus = 'SUCCESS' | 'FAIL';
@@ -45,14 +43,22 @@ export interface CallbackSimulateRequest {
   remark?: string;
 }
 
-export interface CallbackSimulateQueryParams extends PageParams {
+export interface CallbackSimulateQueryParams {
+  current?: number;
+  size?: number;
   merchantNo?: string;
   callbackType?: CallbackType;
   simulateStatus?: SimulateStatus;
   callbackStatus?: CallbackStatus;
 }
 
-export type CallbackSimulateListResult = PageResult<CallbackSimulateLog>;
+export interface CallbackSimulatePageResult {
+  records: CallbackSimulateLog[];
+  total: number;
+  current: number;
+  size: number;
+  pages: number;
+}
 
 export interface CallbackResendRequest {
   logNo: string;

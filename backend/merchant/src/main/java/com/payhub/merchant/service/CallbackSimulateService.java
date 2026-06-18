@@ -3,99 +3,115 @@ package com.payhub.merchant.service;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.payhub.common.enums.PayStatusEnum;
+import com.payhub.common.enums.RefundStatusEnum;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
-import com.payhub.common.utils.HttpUtil;
+import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.common.utils.SignUtil;
+import com.payhub.common.utils.Sm4Util;
 import com.payhub.merchant.dto.CallbackSimulateRequest;
 import com.payhub.merchant.dto.CallbackSimulateVO;
 import com.payhub.merchant.dto.SignCodeExampleRequest;
 import com.payhub.merchant.dto.SignCodeExampleVO;
 import com.payhub.merchant.entity.CallbackSimulateLog;
+import com.payhub.merchant.entity.MerchantInfo;
 import com.payhub.merchant.mapper.CallbackSimulateLogMapper;
+import com.payhub.merchant.mapper.MerchantInfoMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 @Slf4j
 @Service
 public class CallbackSimulateService {
 
+    private static final String DEFAULT_MERCHANT_SECRET = "payhub_default_secret_key_2024";
+    private static final int HTTP_TIMEOUT = 30000;
+
     @Autowired
     private CallbackSimulateLogMapper callbackSimulateLogMapper;
 
+    @Autowired
+    private MerchantInfoMapper merchantInfoMapper;
+
     public CallbackSimulateVO simulate(CallbackSimulateRequest request) {
+        MerchantInfo merchantInfo = getMerchantInfo(request.getMerchantNo());
+        if (merchantInfo == null) {
+            throw new BusinessException(ResultCode.CALLBACK_TEST_FAIL, "商户不存在");
+        }
+
         String logNo = "CS" + System.currentTimeMillis() + RandomUtil.randomNumbers(4);
         String orderNo = StrUtil.isNotBlank(request.getOrderNo())
                 ? request.getOrderNo()
-                : "PG" + System.currentTimeMillis();
+                : OrderNoGenerator.generate();
 
-        TreeMap<String, Object> params = new TreeMap<>();
-        params.put("merchantNo", request.getMerchantNo());
-        params.put("orderNo", orderNo);
-        params.put("callbackType", request.getCallbackType());
-        params.put("status", request.getSimulateStatus());
-        if (request.getAmount() != null) {
-            params.put("amount", request.getAmount());
+        String callbackUrl = resolveCallbackUrl(request, merchantInfo);
+        if (StrUtil.isBlank(callbackUrl)) {
+            throw new BusinessException(ResultCode.CALLBACK_TEST_FAIL, "回调地址不能为空");
         }
-        params.put("timestamp", System.currentTimeMillis());
 
-        String signType = StrUtil.isNotBlank(request.getSignType()) ? request.getSignType().toUpperCase() : "MD5";
+        TreeMap<String, Object> params = buildNotifyParams(request, merchantInfo, orderNo);
+        String signType = resolveSignType(request, merchantInfo);
+
         String md5Key = null;
         String rsaPrivateKey = null;
         String sm2PrivateKey = null;
 
-        switch (signType) {
-            case "RSA":
-                SignUtil.RsaKeyPair rsaKeyPair = SignUtil.generateRsaKeyPair();
-                rsaPrivateKey = rsaKeyPair.getPrivateKey();
-                break;
-            case "SM2":
-                SignUtil.Sm2KeyPair sm2KeyPair = SignUtil.generateSm2KeyPair();
-                sm2PrivateKey = sm2KeyPair.getPrivateKey();
-                break;
-            default:
-                md5Key = "test_md5_key_123456";
-                break;
+        if ("MD5".equalsIgnoreCase(signType)) {
+            md5Key = getMerchantMd5Secret(merchantInfo);
+        } else if ("RSA".equalsIgnoreCase(signType)) {
+            rsaPrivateKey = getMerchantRsaPrivateKey(merchantInfo);
+            if (StrUtil.isBlank(rsaPrivateKey)) {
+                SignUtil.RsaKeyPair pair = SignUtil.generateRsaKeyPair();
+                rsaPrivateKey = pair.getPrivateKey();
+            }
+        } else if ("SM2".equalsIgnoreCase(signType)) {
+            sm2PrivateKey = getMerchantSm2PrivateKey(merchantInfo);
+            if (StrUtil.isBlank(sm2PrivateKey)) {
+                SignUtil.Sm2KeyPair pair = SignUtil.generateSm2KeyPair();
+                sm2PrivateKey = pair.getPrivateKey();
+            }
         }
 
         String sign = SignUtil.sign(params, signType, md5Key, rsaPrivateKey, sm2PrivateKey);
         params.put("sign", sign);
         params.put("signType", signType);
 
-        String requestBody = JSON.toJSONString(params);
+        String requestBody;
+        if (StrUtil.isNotBlank(request.getCustomRequestBody())) {
+            JSONObject customJson = JSON.parseObject(request.getCustomRequestBody());
+            customJson.put("sign", sign);
+            customJson.put("signType", signType);
+            requestBody = customJson.toJSONString();
+        } else {
+            requestBody = JSON.toJSONString(params);
+        }
 
-        Map<String, String> headers = new HashMap<>();
+        Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Content-Type", "application/json;charset=UTF-8");
         headers.put("X-Callback-Simulate", "true");
+        headers.put("X-Callback-Type", request.getCallbackType());
+        headers.put("X-Request-Id", logNo);
 
-        String callbackUrl = request.getCallbackUrl();
-        long startTime = System.currentTimeMillis();
-        String responseBody = null;
-        Integer responseHttpStatus = null;
-        try {
-            responseBody = HttpUtil.postJson(callbackUrl, params, headers);
-            responseHttpStatus = 200;
-        } catch (Exception e) {
-            log.error("回调模拟发送失败: logNo={}, url={}", logNo, callbackUrl, e);
-            responseHttpStatus = 500;
-            responseBody = e.getMessage();
-        }
-        long responseTimeMs = System.currentTimeMillis() - startTime;
+        HttpResponseResult httpResult = doPost(callbackUrl, requestBody, headers);
 
         CallbackSimulateLog logEntity = new CallbackSimulateLog();
         logEntity.setLogNo(logNo);
         logEntity.setMerchantNo(request.getMerchantNo());
+        logEntity.setMerchantName(merchantInfo.getMerchantName());
         logEntity.setOrderNo(orderNo);
         logEntity.setCallbackUrl(callbackUrl);
         logEntity.setCallbackType(request.getCallbackType());
@@ -103,15 +119,16 @@ public class CallbackSimulateService {
         logEntity.setSignType(signType);
         logEntity.setRequestHeaders(JSON.toJSONString(headers));
         logEntity.setRequestBody(requestBody);
-        logEntity.setResponseHttpStatus(responseHttpStatus);
-        logEntity.setResponseBody(responseBody);
-        logEntity.setResponseTimeMs((int) responseTimeMs);
-        logEntity.setCallbackStatus(responseHttpStatus == 200 && StrUtil.isNotBlank(responseBody) ? 1 : 2);
+        logEntity.setResponseHttpStatus(httpResult.httpStatus);
+        logEntity.setResponseBody(httpResult.responseBody);
+        logEntity.setResponseTimeMs(httpResult.responseTimeMs);
+        logEntity.setCallbackStatus(determineCallbackStatus(httpResult));
         logEntity.setRetryCount(0);
         logEntity.setRemark(request.getRemark());
         callbackSimulateLogMapper.insert(logEntity);
 
-        log.info("回调模拟完成: logNo={}, callbackStatus={}, responseTimeMs={}", logNo, logEntity.getCallbackStatus(), responseTimeMs);
+        log.info("回调模拟完成: logNo={}, callbackStatus={}, httpStatus={}, responseTimeMs={}",
+                logNo, logEntity.getCallbackStatus(), httpResult.httpStatus, httpResult.responseTimeMs);
 
         return convertToVO(logEntity);
     }
@@ -122,20 +139,20 @@ public class CallbackSimulateService {
 
         if (params != null) {
             String merchantNo = (String) params.get("merchantNo");
-            if (StringUtils.hasText(merchantNo)) {
+            if (StrUtil.isNotBlank(merchantNo)) {
                 wrapper.eq(CallbackSimulateLog::getMerchantNo, merchantNo);
             }
             String callbackType = (String) params.get("callbackType");
-            if (StringUtils.hasText(callbackType)) {
+            if (StrUtil.isNotBlank(callbackType)) {
                 wrapper.eq(CallbackSimulateLog::getCallbackType, callbackType);
             }
             String simulateStatus = (String) params.get("simulateStatus");
-            if (StringUtils.hasText(simulateStatus)) {
+            if (StrUtil.isNotBlank(simulateStatus)) {
                 wrapper.eq(CallbackSimulateLog::getSimulateStatus, simulateStatus);
             }
-            String callbackStatus = (String) params.get("callbackStatus");
-            if (StringUtils.hasText(callbackStatus)) {
-                wrapper.eq(CallbackSimulateLog::getCallbackStatus, Integer.valueOf(callbackStatus));
+            Object callbackStatusObj = params.get("callbackStatus");
+            if (callbackStatusObj != null && StrUtil.isNotBlank(String.valueOf(callbackStatusObj))) {
+                wrapper.eq(CallbackSimulateLog::getCallbackStatus, Integer.valueOf(String.valueOf(callbackStatusObj)));
             }
         }
 
@@ -144,7 +161,10 @@ public class CallbackSimulateService {
         IPage<CallbackSimulateLog> logPage = callbackSimulateLogMapper.selectPage(page, wrapper);
 
         Page<CallbackSimulateVO> voPage = new Page<>(logPage.getCurrent(), logPage.getSize(), logPage.getTotal());
-        voPage.setRecords(logPage.getRecords().stream().map(this::convertToVO).collect(java.util.stream.Collectors.toList()));
+        voPage.setPages(logPage.getPages());
+        voPage.setRecords(logPage.getRecords().stream()
+                .map(this::convertToVO)
+                .collect(java.util.stream.Collectors.toList()));
 
         return voPage;
     }
@@ -157,44 +177,54 @@ public class CallbackSimulateService {
             throw new BusinessException(ResultCode.CALLBACK_TEST_FAIL, "回调模拟记录不存在");
         }
 
-        JSONObject requestBody = JSON.parseObject(logEntity.getRequestBody());
-        Map<String, Object> params = new HashMap<>(requestBody);
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "application/json;charset=UTF-8");
-        headers.put("X-Callback-Simulate", "true");
-
-        long startTime = System.currentTimeMillis();
-        String responseBody = null;
-        Integer responseHttpStatus = null;
-        try {
-            responseBody = HttpUtil.postJson(logEntity.getCallbackUrl(), params, headers);
-            responseHttpStatus = 200;
-        } catch (Exception e) {
-            log.error("回调重发失败: logNo={}, url={}", logNo, logEntity.getCallbackUrl(), e);
-            responseHttpStatus = 500;
-            responseBody = e.getMessage();
+        Map<String, String> headers;
+        if (StrUtil.isNotBlank(logEntity.getRequestHeaders())) {
+            headers = new LinkedHashMap<>();
+            try {
+                JSONObject headerJson = JSON.parseObject(logEntity.getRequestHeaders());
+                for (String k : headerJson.keySet()) {
+                    headers.put(k, String.valueOf(headerJson.get(k)));
+                }
+            } catch (Exception e) {
+                headers = buildDefaultHeaders(logNo, logEntity.getCallbackType());
+            }
+        } else {
+            headers = buildDefaultHeaders(logNo, logEntity.getCallbackType());
         }
-        long responseTimeMs = System.currentTimeMillis() - startTime;
 
-        logEntity.setRetryCount(logEntity.getRetryCount() + 1);
-        logEntity.setResponseHttpStatus(responseHttpStatus);
-        logEntity.setResponseBody(responseBody);
-        logEntity.setResponseTimeMs((int) responseTimeMs);
-        logEntity.setCallbackStatus(3);
+        HttpResponseResult httpResult = doPost(logEntity.getCallbackUrl(), logEntity.getRequestBody(), headers);
+
+        int newRetryCount = (logEntity.getRetryCount() == null ? 0 : logEntity.getRetryCount()) + 1;
+        int callbackStatus = determineCallbackStatus(httpResult);
+
+        logEntity.setRetryCount(newRetryCount);
+        logEntity.setResponseHttpStatus(httpResult.httpStatus);
+        logEntity.setResponseBody(httpResult.responseBody);
+        logEntity.setResponseTimeMs(httpResult.responseTimeMs);
+        logEntity.setCallbackStatus(callbackStatus);
         callbackSimulateLogMapper.updateById(logEntity);
 
-        log.info("回调重发完成: logNo={}, retryCount={}, responseTimeMs={}", logNo, logEntity.getRetryCount(), responseTimeMs);
+        log.info("回调重发完成: logNo={}, retryCount={}, callbackStatus={}, httpStatus={}, responseTimeMs={}",
+                logNo, newRetryCount, callbackStatus, httpResult.httpStatus, httpResult.responseTimeMs);
 
+        return convertToVO(logEntity);
+    }
+
+    public CallbackSimulateVO getByLogNo(String logNo) {
+        LambdaQueryWrapper<CallbackSimulateLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CallbackSimulateLog::getLogNo, logNo).last("LIMIT 1");
+        CallbackSimulateLog logEntity = callbackSimulateLogMapper.selectOne(wrapper);
+        if (logEntity == null) {
+            throw new BusinessException(ResultCode.CALLBACK_TEST_FAIL, "回调模拟记录不存在");
+        }
         return convertToVO(logEntity);
     }
 
     public SignCodeExampleVO generateSignCode(SignCodeExampleRequest request) {
         String language = request.getLanguage().toUpperCase();
         String signType = request.getSignType().toUpperCase();
-
         String code = generateCode(language, signType, request.getParams(), request.getKey());
-        String description = language + " " + signType + " 签名示例";
+        String description = language + " " + signType + " 签名示例代码";
 
         SignCodeExampleVO vo = new SignCodeExampleVO();
         vo.setLanguage(language);
@@ -202,6 +232,214 @@ public class CallbackSimulateService {
         vo.setCode(code);
         vo.setDescription(description);
         return vo;
+    }
+
+    private MerchantInfo getMerchantInfo(String merchantNo) {
+        if (StrUtil.isBlank(merchantNo)) {
+            return null;
+        }
+        LambdaQueryWrapper<MerchantInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MerchantInfo::getMerchantNo, merchantNo)
+                .eq(MerchantInfo::getStatus, 1)
+                .last("LIMIT 1");
+        return merchantInfoMapper.selectOne(wrapper);
+    }
+
+    private String resolveCallbackUrl(CallbackSimulateRequest request, MerchantInfo merchantInfo) {
+        if (StrUtil.isNotBlank(request.getCallbackUrl())) {
+            return request.getCallbackUrl();
+        }
+        try {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.payhub.pay.entity.MerchantPayConfig> w =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            w.eq(com.payhub.pay.entity.MerchantPayConfig::getMerchantNo, merchantInfo.getMerchantNo())
+                    .eq(com.payhub.pay.entity.MerchantPayConfig::getStatus, 1)
+                    .orderByAsc(com.payhub.pay.entity.MerchantPayConfig::getPriority)
+                    .last("LIMIT 1");
+            try {
+                com.payhub.pay.entity.MerchantPayConfig cfg = getMerchantPayConfigMapper().selectOne(w);
+                if (cfg != null) {
+                    // no notify_url on entity, fall through to default
+                }
+            } catch (Exception ignore) {
+            }
+        } catch (Exception ignore) {
+        }
+        if (StrUtil.isBlank(request.getCallbackUrl()) && merchantInfo != null) {
+            String phone = merchantInfo.getContactPhone();
+            if (phone != null && !phone.isEmpty()) {
+                return null;
+            }
+        }
+        return request.getCallbackUrl();
+    }
+
+    private com.payhub.pay.mapper.MerchantPayConfigMapper merchantPayConfigMapper;
+
+    private com.payhub.pay.mapper.MerchantPayConfigMapper getMerchantPayConfigMapper() {
+        return merchantPayConfigMapper;
+    }
+
+    @Autowired(required = false)
+    public void setMerchantPayConfigMapper(com.payhub.pay.mapper.MerchantPayConfigMapper mapper) {
+        this.merchantPayConfigMapper = mapper;
+    }
+
+    private TreeMap<String, Object> buildNotifyParams(CallbackSimulateRequest request, MerchantInfo merchantInfo, String orderNo) {
+        TreeMap<String, Object> params = new TreeMap<>();
+        params.put("merchantNo", request.getMerchantNo());
+        params.put("orderNo", orderNo);
+        params.put("merchantOrderNo", request.getOrderNo() != null ? request.getOrderNo() : orderNo);
+        params.put("payChannel", "PAYHUB");
+        params.put("payType", "SIMULATE");
+
+        boolean isPay = "PAY".equalsIgnoreCase(request.getCallbackType());
+        if (isPay) {
+            Integer payStatus = "SUCCESS".equalsIgnoreCase(request.getSimulateStatus())
+                    ? PayStatusEnum.SUCCESS.getCode()
+                    : PayStatusEnum.FAIL.getCode();
+            params.put("payStatus", payStatus);
+        } else {
+            Integer refundStatus = "SUCCESS".equalsIgnoreCase(request.getSimulateStatus())
+                    ? RefundStatusEnum.SUCCESS.getCode()
+                    : RefundStatusEnum.FAIL.getCode();
+            params.put("refundStatus", refundStatus);
+            params.put("refundNo", "RF" + System.currentTimeMillis());
+        }
+
+        BigDecimal amount = request.getAmount() != null ? new BigDecimal(request.getAmount()) : new BigDecimal(10000);
+        params.put(isPay ? "payAmount" : "refundAmount", amount);
+
+        if ("SUCCESS".equalsIgnoreCase(request.getSimulateStatus())) {
+            LocalDateTime now = LocalDateTime.now();
+            String timeStr = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            params.put(isPay ? "payTime" : "refundTime", timeStr);
+            params.put("channelTradeNo", "CT" + System.currentTimeMillis() + RandomUtil.randomNumbers(4));
+        }
+
+        params.put("callbackType", request.getCallbackType());
+        params.put("status", request.getSimulateStatus());
+        params.put("timestamp", System.currentTimeMillis());
+        params.put("nonceStr", RandomUtil.randomString(16));
+
+        return params;
+    }
+
+    private String resolveSignType(CallbackSimulateRequest request, MerchantInfo merchantInfo) {
+        if (StrUtil.isNotBlank(request.getSignType())) {
+            return request.getSignType().toUpperCase();
+        }
+        if (merchantInfo != null) {
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeyMd5())) {
+                return "MD5";
+            }
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeyRsaPrivate())) {
+                return "RSA";
+            }
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeySm2Private())) {
+                return "SM2";
+            }
+        }
+        return "MD5";
+    }
+
+    private String getMerchantMd5Secret(MerchantInfo merchantInfo) {
+        try {
+            if (merchantInfo != null && StrUtil.isNotBlank(merchantInfo.getApiKeyMd5())) {
+                String secret = Sm4Util.decrypt(merchantInfo.getApiKeyMd5());
+                if (StrUtil.isNotBlank(secret)) {
+                    return secret;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取商户MD5密钥失败, merchantNo={}, 使用默认密钥", merchantInfo == null ? null : merchantInfo.getMerchantNo(), e);
+        }
+        return DEFAULT_MERCHANT_SECRET;
+    }
+
+    private String getMerchantRsaPrivateKey(MerchantInfo merchantInfo) {
+        try {
+            if (merchantInfo != null && StrUtil.isNotBlank(merchantInfo.getApiKeyRsaPrivate())) {
+                String key = Sm4Util.decrypt(merchantInfo.getApiKeyRsaPrivate());
+                if (StrUtil.isNotBlank(key)) {
+                    return key;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取商户RSA私钥失败, merchantNo={}", merchantInfo == null ? null : merchantInfo.getMerchantNo(), e);
+        }
+        return null;
+    }
+
+    private String getMerchantSm2PrivateKey(MerchantInfo merchantInfo) {
+        try {
+            if (merchantInfo != null && StrUtil.isNotBlank(merchantInfo.getApiKeySm2Private())) {
+                String key = Sm4Util.decrypt(merchantInfo.getApiKeySm2Private());
+                if (StrUtil.isNotBlank(key)) {
+                    return key;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取商户SM2私钥失败, merchantNo={}", merchantInfo == null ? null : merchantInfo.getMerchantNo(), e);
+        }
+        return null;
+    }
+
+    private Map<String, String> buildDefaultHeaders(String logNo, String callbackType) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", "application/json;charset=UTF-8");
+        headers.put("X-Callback-Simulate", "true");
+        headers.put("X-Callback-Type", callbackType);
+        headers.put("X-Request-Id", logNo);
+        return headers;
+    }
+
+    private static class HttpResponseResult {
+        Integer httpStatus;
+        String responseBody;
+        int responseTimeMs;
+
+        HttpResponseResult(Integer httpStatus, String responseBody, int responseTimeMs) {
+            this.httpStatus = httpStatus;
+            this.responseBody = responseBody;
+            this.responseTimeMs = responseTimeMs;
+        }
+    }
+
+    private HttpResponseResult doPost(String url, String body, Map<String, String> headers) {
+        long startTime = System.currentTimeMillis();
+        Integer httpStatus = null;
+        String responseBody = null;
+        try {
+            HttpRequest httpRequest = HttpRequest.post(url)
+                    .body(body, "application/json;charset=UTF-8")
+                    .timeout(HTTP_TIMEOUT);
+            if (headers != null) {
+                httpRequest.addHeaders(headers);
+            }
+            HttpResponse response = httpRequest.execute();
+            httpStatus = response.getStatus();
+            responseBody = response.body();
+        } catch (Exception e) {
+            log.error("HTTP POST请求异常: url={}", url, e);
+            httpStatus = 0;
+            responseBody = "REQUEST_ERROR: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+        int responseTimeMs = (int) (System.currentTimeMillis() - startTime);
+        return new HttpResponseResult(httpStatus, responseBody, responseTimeMs);
+    }
+
+    private int determineCallbackStatus(HttpResponseResult result) {
+        if (result.httpStatus == null) {
+            return 2;
+        }
+        boolean success = result.httpStatus >= 200 && result.httpStatus < 300
+                && StrUtil.isNotBlank(result.responseBody)
+                && !result.responseBody.startsWith("REQUEST_ERROR");
+        if (success) {
+            return 1;
+        }
+        return 2;
     }
 
     private String generateCode(String language, String signType, Map<String, Object> params, String key) {
@@ -397,7 +635,7 @@ public class CallbackSimulateService {
         CallbackSimulateVO vo = BeanUtil.copyProperties(logEntity, CallbackSimulateVO.class);
         vo.setCallbackStatusDesc(getCallbackStatusDesc(logEntity.getCallbackStatus()));
         if (logEntity.getCreatedAt() != null) {
-            vo.setCreatedAt(logEntity.getCreatedAt().toString());
+            vo.setCreatedAt(logEntity.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         }
         return vo;
     }

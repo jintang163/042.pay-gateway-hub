@@ -3,7 +3,7 @@ import type {
   CallbackSimulateLog,
   CallbackSimulateRequest,
   CallbackSimulateQueryParams,
-  CallbackSimulateListResult,
+  CallbackSimulatePageResult,
   CallbackResendRequest,
   SignCodeExampleRequest,
   SignCodeExample,
@@ -15,7 +15,7 @@ export const callbackSimulateApi = {
   },
 
   list: (params: CallbackSimulateQueryParams) => {
-    return request.get<CallbackSimulateListResult>('/callback-simulate/list', params);
+    return request.get<CallbackSimulatePageResult>('/callback-simulate/list', params);
   },
 
   detail: (logNo: string) => {
