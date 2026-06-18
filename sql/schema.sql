@@ -711,3 +711,34 @@ CREATE TABLE IF NOT EXISTS `payment_page_config` (
   UNIQUE KEY `uk_merchant_no` (`merchant_no`),
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付页面个性化配置表';
+
+-- -----------------------------------------------
+-- 23. 商户配置测试记录表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `merchant_config_test_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `log_no` VARCHAR(64) NOT NULL COMMENT '测试日志编号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户号',
+  `merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '商户名称',
+  `total_tests` INT NOT NULL DEFAULT 0 COMMENT '测试项总数',
+  `passed_tests` INT NOT NULL DEFAULT 0 COMMENT '通过数',
+  `failed_tests` INT NOT NULL DEFAULT 0 COMMENT '失败/警告数',
+  `overall_status` VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT '整体状态：PASS/FAIL/PARTIAL',
+  `overall_status_desc` VARCHAR(32) DEFAULT NULL COMMENT '状态描述',
+  `callback_url` VARCHAR(512) DEFAULT NULL COMMENT '使用的回调地址',
+  `sign_type` VARCHAR(16) DEFAULT NULL COMMENT '使用的签名算法',
+  `total_time_ms` INT DEFAULT NULL COMMENT '总耗时（毫秒）',
+  `items_json` MEDIUMTEXT DEFAULT NULL COMMENT '测试项详情（JSON）',
+  `summary` TEXT DEFAULT NULL COMMENT '测试摘要',
+  `operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_log_no` (`log_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_overall_status` (`overall_status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户配置测试记录表';

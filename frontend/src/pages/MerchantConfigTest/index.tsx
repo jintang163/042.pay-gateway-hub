@@ -128,10 +128,8 @@ const MerchantConfigTest = () => {
         const result = await merchantConfigTestApi.runTest(values);
         setReport(result);
         message.success('测试完成');
-      } catch {
-        const mockReport = generateMockReport(values.merchantNo);
-        setReport(mockReport);
-        message.success('测试完成（演示模式）');
+      } catch (err: any) {
+        message.error(err?.message || '测试失败');
       }
     } catch (error: any) {
       if (error?.errorFields) return;
@@ -139,109 +137,6 @@ const MerchantConfigTest = () => {
     } finally {
       setTesting(false);
     }
-  };
-
-  const generateMockReport = (merchantNo: string): MerchantConfigTestReport => {
-    const merchant = merchants.find((m) => m.merchantNo === merchantNo);
-    const items: TestItemResult[] = [
-      {
-        itemCode: 'MERCHANT_INFO',
-        itemName: '商户基本信息',
-        itemCategory: '基础配置',
-        status: 'PASS',
-        statusDesc: '通过',
-        durationMs: 12,
-        expectedValue: '商户状态正常，审核通过',
-        actualValue: '状态:启用, 审核状态:通过',
-        message: '商户状态正常，已通过审核',
-      },
-      {
-        itemCode: 'SIGN_MD5',
-        itemName: 'MD5签名算法',
-        itemCategory: '签名配置',
-        status: 'PASS',
-        statusDesc: '通过',
-        durationMs: 8,
-        expectedValue: 'MD5密钥已配置且签名正常',
-        actualValue: '密钥已配置, 签名验证通过',
-        message: 'MD5签名算法配置正确，签名与验证均正常',
-      },
-      {
-        itemCode: 'SIGN_RSA',
-        itemName: 'RSA签名算法',
-        itemCategory: '签名配置',
-        status: 'WARN',
-        statusDesc: '警告',
-        durationMs: 15,
-        expectedValue: 'RSA密钥对已配置且签名正常',
-        actualValue: '未配置RSA密钥对',
-        message: '未配置RSA签名密钥',
-        suggestion: '如需使用RSA签名，请在商户密钥配置中设置RSA密钥对',
-      },
-      {
-        itemCode: 'SIGN_SM2',
-        itemName: 'SM2国密签名',
-        itemCategory: '签名配置',
-        status: 'WARN',
-        statusDesc: '警告',
-        durationMs: 10,
-        expectedValue: 'SM2密钥对已配置且签名正常',
-        actualValue: '未配置SM2密钥',
-        message: '未配置SM2国密签名密钥',
-        suggestion: '如需使用国密签名，请在商户密钥配置中设置SM2密钥',
-      },
-      {
-        itemCode: 'CONNECTIVITY',
-        itemName: '回调地址连通性',
-        itemCategory: '网络连通性',
-        status: 'PASS',
-        statusDesc: '通过',
-        durationMs: 245,
-        expectedValue: '回调地址可访问，HTTP 2xx 响应',
-        actualValue: 'HTTP 200, 耗时245ms',
-        message: '回调地址可正常访问（HTTP 200）',
-      },
-      {
-        itemCode: 'CALLBACK_NOTIFY',
-        itemName: '支付回调通知',
-        itemCategory: '回调功能',
-        status: 'PASS',
-        statusDesc: '通过',
-        durationMs: 312,
-        expectedValue: '商户返回 2xx 状态码且响应体包含成功标识',
-        actualValue: 'HTTP 200, 耗时312ms',
-        message: '回调通知发送成功，商户正确响应',
-        detail: '请求体:\n{"merchantNo":"M000001","orderNo":"TEST123456"}\n\n响应体:\n{"code":0,"message":"success","data":null}',
-      },
-      {
-        itemCode: 'SIGN_VERIFY',
-        itemName: '签名自验证',
-        itemCategory: '签名安全',
-        status: 'PASS',
-        statusDesc: '通过',
-        durationMs: 25,
-        expectedValue: '所有已配置的签名算法均可正常签名和验签',
-        actualValue: '通过:MD5, 失败:无, 未配置:RSA,SM2',
-        message: '所有已配置的签名算法均通过自验证',
-      },
-    ];
-
-    const passed = items.filter((i) => i.status === 'PASS').length;
-    const failed = items.length - passed;
-
-    return {
-      merchantNo,
-      merchantName: merchant?.merchantName || '示例商户',
-      totalTests: items.length,
-      passedTests: passed,
-      failedTests: failed,
-      overallStatus: failed === 0 ? 'PASS' : failed === items.length ? 'FAIL' : 'PARTIAL',
-      overallStatusDesc: failed === 0 ? '全部通过' : failed === items.length ? '全部失败' : '部分通过',
-      totalTimeMs: items.reduce((sum, i) => sum + (i.durationMs || 0), 0),
-      testTime: new Date().toLocaleString('zh-CN'),
-      items,
-      summary: `测试完成，共${items.length}项测试，通过${passed}项，失败/警告${failed}项。\n\n建议优化以下配置：\n  ⚠ 【RSA签名算法】未配置RSA签名密钥\n  ⚠ 【SM2国密签名】未配置SM2国密签名密钥`,
-    };
   };
 
   const groupedItems = useMemo(() => {
@@ -395,7 +290,7 @@ const MerchantConfigTest = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item name="callbackUrl" label="回调地址（可选）">
-                <Input placeholder="不填则使用商户配置的回调地址" />
+                <Input placeholder="不填则从商户支付配置的异步通知地址(notify_url)自动获取" />
               </Form.Item>
             </Col>
           </Row>

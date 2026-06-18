@@ -1,5 +1,6 @@
 package com.payhub.merchant.service.impl;
 
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -14,7 +15,9 @@ import com.payhub.common.utils.Sm4Util;
 import com.payhub.merchant.dto.MerchantConfigTestReport;
 import com.payhub.merchant.dto.MerchantConfigTestRequest;
 import com.payhub.merchant.dto.TestItemResult;
+import com.payhub.merchant.entity.MerchantConfigTestLog;
 import com.payhub.merchant.entity.MerchantInfo;
+import com.payhub.merchant.mapper.MerchantConfigTestLogMapper;
 import com.payhub.merchant.mapper.MerchantInfoMapper;
 import com.payhub.merchant.service.MerchantConfigTestService;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +25,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.net.InetAddress;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -37,38 +39,39 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
     @Autowired
     private MerchantInfoMapper merchantInfoMapper;
 
+    @Autowired
+    private MerchantConfigTestLogMapper testLogMapper;
+
+    private com.payhub.pay.mapper.MerchantPayConfigMapper merchantPayConfigMapper;
+
+    @Autowired(required = false)
+    public void setMerchantPayConfigMapper(com.payhub.pay.mapper.MerchantPayConfigMapper mapper) {
+        this.merchantPayConfigMapper = mapper;
+    }
+
     @Override
     public MerchantConfigTestReport runTest(MerchantConfigTestRequest request) {
         long startTime = System.currentTimeMillis();
+        String logNo = "MCT" + System.currentTimeMillis() + RandomUtil.randomNumbers(4);
 
         MerchantInfo merchantInfo = getMerchantInfo(request.getMerchantNo());
         if (merchantInfo == null) {
             throw new BusinessException(ResultCode.MERCHANT_NOT_EXIST);
         }
 
+        String signType = resolveSignType(request, merchantInfo);
+
         List<TestItemResult> items = new ArrayList<>();
 
-        TestItemResult merchantInfoTest = testMerchantInfo(merchantInfo);
-        items.add(merchantInfoTest);
-
-        TestItemResult signMd5Test = testSignMd5(merchantInfo);
-        items.add(signMd5Test);
-
-        TestItemResult signRsaTest = testSignRsa(merchantInfo);
-        items.add(signRsaTest);
-
-        TestItemResult signSm2Test = testSignSm2(merchantInfo);
-        items.add(signSm2Test);
+        items.add(testMerchantInfo(merchantInfo));
+        items.add(testSignMd5(merchantInfo));
+        items.add(testSignRsa(merchantInfo));
+        items.add(testSignSm2(merchantInfo));
 
         String callbackUrl = resolveCallbackUrl(request, merchantInfo);
-        TestItemResult connectivityTest = testConnectivity(callbackUrl);
-        items.add(connectivityTest);
-
-        TestItemResult callbackTest = testCallbackNotify(request, merchantInfo, callbackUrl);
-        items.add(callbackTest);
-
-        TestItemResult signatureVerifyTest = testSignatureVerification(merchantInfo);
-        items.add(signatureVerifyTest);
+        items.add(testConnectivity(callbackUrl));
+        items.add(testCallbackNotify(request, merchantInfo, callbackUrl, signType));
+        items.add(testSignatureVerification(merchantInfo));
 
         long totalTime = System.currentTimeMillis() - startTime;
 
@@ -90,10 +93,36 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
         report.setItems(items);
         report.setSummary(buildSummary(report, items));
 
-        log.info("商户配置一键测试完成: merchantNo={}, status={}, passed={}/{}, cost={}ms",
-                merchantInfo.getMerchantNo(), overallStatus, passed, items.size(), totalTime);
+        saveTestLog(logNo, request, merchantInfo, report, callbackUrl, signType, items);
+
+        log.info("商户配置一键测试完成: logNo={}, merchantNo={}, status={}, passed={}/{}, cost={}ms",
+                logNo, merchantInfo.getMerchantNo(), overallStatus, passed, items.size(), totalTime);
 
         return report;
+    }
+
+    private void saveTestLog(String logNo, MerchantConfigTestRequest request, MerchantInfo merchantInfo,
+                             MerchantConfigTestReport report, String callbackUrl, String signType,
+                             List<TestItemResult> items) {
+        try {
+            MerchantConfigTestLog logEntity = new MerchantConfigTestLog();
+            logEntity.setLogNo(logNo);
+            logEntity.setMerchantNo(merchantInfo.getMerchantNo());
+            logEntity.setMerchantName(merchantInfo.getMerchantName());
+            logEntity.setTotalTests(report.getTotalTests());
+            logEntity.setPassedTests(report.getPassedTests());
+            logEntity.setFailedTests(report.getFailedTests());
+            logEntity.setOverallStatus(report.getOverallStatus());
+            logEntity.setOverallStatusDesc(report.getOverallStatusDesc());
+            logEntity.setCallbackUrl(callbackUrl);
+            logEntity.setSignType(signType);
+            logEntity.setTotalTimeMs(report.getTotalTimeMs() != null ? report.getTotalTimeMs().intValue() : null);
+            logEntity.setItemsJson(JSON.toJSONString(items));
+            logEntity.setSummary(report.getSummary());
+            testLogMapper.insert(logEntity);
+        } catch (Exception e) {
+            log.error("保存商户配置测试记录失败", e);
+        }
     }
 
     private TestItemResult testMerchantInfo(MerchantInfo merchant) {
@@ -135,8 +164,8 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
 
             if (hasKey) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "MD5", md5Key);
-                boolean valid = SignUtil.verifySign(params, "MD5", sign, md5Key);
+                String sign = SignUtil.sign(params, "MD5", md5Key, null, null);
+                boolean valid = SignUtil.verify(params, "MD5", sign, md5Key, null, null);
                 result.setActualValue("密钥已配置, 签名验证" + (valid ? "通过" : "失败"));
 
                 if (valid) {
@@ -146,7 +175,8 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
                 }
             } else {
                 result.setActualValue("未配置MD5密钥（使用默认密钥）");
-                markWarning(result, "未配置商户专属MD5密钥，当前使用默认密钥", "建议在商户密钥配置中设置专属MD5密钥");
+                markWarning(result, "未配置商户专属MD5密钥，当前使用默认密钥",
+                        "建议在商户密钥配置中设置专属MD5密钥");
             }
         } catch (Exception e) {
             markError(result, "MD5签名测试异常: " + e.getMessage());
@@ -168,8 +198,8 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
 
             if (StrUtil.isNotBlank(privateKey) && StrUtil.isNotBlank(publicKey)) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "RSA", privateKey);
-                boolean valid = SignUtil.verifySign(params, "RSA", sign, publicKey);
+                String sign = SignUtil.sign(params, "RSA", null, privateKey, null);
+                boolean valid = SignUtil.verify(params, "RSA", sign, null, publicKey, null);
                 result.setActualValue("密钥对已配置, 签名验证" + (valid ? "通过" : "失败"));
 
                 if (valid) {
@@ -197,21 +227,27 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
             result.setExpectedValue("SM2密钥对已配置且签名正常");
 
             String privateKey = getMerchantSm2PrivateKey(merchant);
+            String publicKey = merchant.getApiKeySm2Public();
 
-            if (StrUtil.isNotBlank(privateKey)) {
+            if (StrUtil.isNotBlank(privateKey) && StrUtil.isNotBlank(publicKey)) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "SM2", privateKey);
-                boolean valid = SignUtil.verifySign(params, "SM2", sign, privateKey);
-                result.setActualValue("私钥已配置, 签名验证" + (valid ? "通过" : "失败"));
+                String sign = SignUtil.sign(params, "SM2", null, null, privateKey);
+                boolean valid = SignUtil.verify(params, "SM2", sign, null, null, publicKey);
+                result.setActualValue("密钥对已配置, 签名验证" + (valid ? "通过" : "失败"));
 
                 if (valid) {
-                    markPass(result, "SM2国密签名算法配置正确");
+                    markPass(result, "SM2国密签名算法配置正确，公私钥匹配正常");
                 } else {
-                    markFail(result, "SM2签名验证失败", "请检查SM2私钥是否正确配置");
+                    markFail(result, "SM2公私钥不匹配，签名验证失败", "请检查SM2公钥和私钥是否配对");
                 }
+            } else if (StrUtil.isNotBlank(privateKey)) {
+                result.setActualValue("已配置私钥，公钥未配置");
+                markWarning(result, "SM2公钥未配置，验签无法完整验证",
+                        "建议配置SM2公钥以完成完整验签流程");
             } else {
                 result.setActualValue("未配置SM2密钥");
-                markWarning(result, "未配置SM2国密签名密钥", "如需使用国密签名，请在商户密钥配置中设置SM2密钥");
+                markWarning(result, "未配置SM2国密签名密钥",
+                        "如需使用国密签名，请在商户密钥配置中设置SM2密钥");
             }
         } catch (Exception e) {
             markError(result, "SM2签名测试异常: " + e.getMessage());
@@ -228,50 +264,67 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
         if (StrUtil.isBlank(callbackUrl)) {
             result.setExpectedValue("回调地址已配置");
             result.setActualValue("未配置回调地址");
-            markFail(result, "未配置回调地址，无法进行连通性测试", "请在商户配置中设置回调通知地址");
+            markFail(result, "未配置回调地址，无法进行连通性测试",
+                    "请在商户支付配置中设置异步通知地址(notify_url)");
             result.setDurationMs(System.currentTimeMillis() - start);
             return result;
         }
 
         try {
-            result.setExpectedValue("回调地址可访问，HTTP 2xx 响应");
-            result.setActualValue("测试中...");
+            result.setExpectedValue("回调地址可访问，HTTP 2xx/3xx 响应（非404）");
 
-            HttpResponse response = HttpRequest.get(callbackUrl)
+            Map<String, Object> probeBody = new LinkedHashMap<>();
+            probeBody.put("probe", "payhub_connectivity_test");
+            probeBody.put("timestamp", System.currentTimeMillis());
+            probeBody.put("nonce", UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+
+            HttpResponse response = HttpRequest.post(callbackUrl)
+                    .body(JSON.toJSONString(probeBody), "application/json;charset=UTF-8")
                     .timeout(HTTP_TIMEOUT)
                     .header("User-Agent", "PayHub-Connectivity-Test")
                     .header("X-Test-Request", "true")
+                    .header("X-Probe-Mode", "connectivity")
                     .execute();
 
             int status = response.getStatus();
             long duration = System.currentTimeMillis() - start;
 
             result.setActualValue(String.format("HTTP %d, 耗时%dms", status, duration));
+            result.setDetail("探测请求体:\n" + JSON.toJSONString(probeBody, true)
+                    + "\n\n响应体:\n" + (response.body() != null ? response.body() : "(空)"));
 
-            if (status >= 200 && status < 500) {
+            if (status == 404) {
+                markFail(result, String.format("回调地址不存在（HTTP 404）", status),
+                        "请确认回调地址URL是否正确，或服务器端是否已部署该接口");
+            } else if (status >= 200 && status < 400) {
                 markPass(result, String.format("回调地址可正常访问（HTTP %d）", status));
+            } else if (status >= 400 && status < 500) {
+                markWarning(result, String.format("回调地址返回客户端错误（HTTP %d）", status),
+                        "请确认请求格式是否符合商户接口要求，或参数校验规则");
             } else {
-                markFail(result, String.format("回调地址访问异常（HTTP %d）", status),
-                        "请检查回调地址是否正确、服务器是否正常运行");
+                markFail(result, String.format("回调地址服务器异常（HTTP %d）", status),
+                        "请检查商户服务是否正常运行、日志是否报错");
             }
         } catch (Exception e) {
             result.setActualValue("连接失败: " + e.getMessage());
-            markFail(result, "无法连接到回调地址",
-                    "请检查回调地址是否正确、网络是否通畅、防火墙是否开放");
+            markFail(result, "无法连接到回调地址: " + e.getMessage(),
+                    "请检查回调地址是否正确、网络是否通畅、防火墙是否开放端口");
         }
 
         result.setDurationMs(System.currentTimeMillis() - start);
         return result;
     }
 
-    private TestItemResult testCallbackNotify(MerchantConfigTestRequest request, MerchantInfo merchant, String callbackUrl) {
+    private TestItemResult testCallbackNotify(MerchantConfigTestRequest request, MerchantInfo merchant,
+                                              String callbackUrl, String signType) {
         TestItemResult result = createItem("CALLBACK_NOTIFY", "支付回调通知", "回调功能");
         long start = System.currentTimeMillis();
 
         if (StrUtil.isBlank(callbackUrl)) {
             result.setExpectedValue("回调通知发送成功，商户正确响应");
             result.setActualValue("未配置回调地址");
-            markFail(result, "未配置回调地址", "请在商户配置中设置回调通知地址");
+            markFail(result, "未配置回调地址",
+                    "请在商户支付配置中设置异步通知地址(notify_url)");
             result.setDurationMs(System.currentTimeMillis() - start);
             return result;
         }
@@ -281,9 +334,12 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
 
             String orderNo = OrderNoGenerator.generate();
             TreeMap<String, Object> params = buildNotifyParams(merchant.getMerchantNo(), orderNo, request);
-            String signType = resolveSignType(request, merchant);
-            String signKey = getSignKey(merchant, signType);
-            String sign = SignUtil.generateSign(params, signType, signKey);
+
+            String md5Key = "MD5".equalsIgnoreCase(signType) ? getMerchantMd5Secret(merchant) : null;
+            String rsaPrivateKey = "RSA".equalsIgnoreCase(signType) ? getMerchantRsaPrivateKey(merchant) : null;
+            String sm2PrivateKey = "SM2".equalsIgnoreCase(signType) ? getMerchantSm2PrivateKey(merchant) : null;
+
+            String sign = SignUtil.sign(params, signType, md5Key, rsaPrivateKey, sm2PrivateKey);
             params.put("sign", sign);
             params.put("signType", signType);
 
@@ -293,6 +349,7 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
             headers.put("Content-Type", "application/json;charset=UTF-8");
             headers.put("X-Callback-Test", "true");
             headers.put("X-Test-Order", orderNo);
+            headers.put("X-Sign-Type", signType);
 
             HttpResponse response = HttpRequest.post(callbackUrl)
                     .body(requestBody, "application/json;charset=UTF-8")
@@ -309,16 +366,22 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
                     (responseBody.toLowerCase().contains("success") ||
                             responseBody.toLowerCase().contains("\"code\":0") ||
                             responseBody.toLowerCase().contains("\"code\":200") ||
+                            responseBody.toLowerCase().contains("\"status\":\"success\"") ||
                             responseBody.toLowerCase().contains("ok"));
 
             result.setActualValue(String.format("HTTP %d, 耗时%dms", status, duration));
-            result.setDetail("请求体:\n" + requestBody + "\n\n响应体:\n" + responseBody);
+            result.setDetail("请求头:\n" + JSON.toJSONString(headers, true)
+                    + "\n\n请求体:\n" + requestBody
+                    + "\n\n响应体:\n" + (responseBody != null ? responseBody : "(空)"));
 
-            if (httpOk && hasSuccess) {
+            if (status == 404) {
+                markFail(result, "回调地址不存在（HTTP 404）",
+                        "请确认异步通知地址是否正确，或接口是否已实现");
+            } else if (httpOk && hasSuccess) {
                 markPass(result, "回调通知发送成功，商户正确响应");
             } else if (httpOk) {
                 markWarning(result, "回调通知HTTP成功，但未检测到成功响应标识",
-                        "请确保商户响应体包含 success/OK 或 code=0/200 标识");
+                        "请确保商户响应体包含 success/OK 或 code=0/200 等约定成功标识");
             } else {
                 markFail(result, String.format("回调通知发送失败（HTTP %d）", status),
                         "请检查回调地址、商户服务状态和回调处理逻辑");
@@ -347,8 +410,8 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
             String md5Key = getMerchantMd5Secret(merchant);
             if (StrUtil.isNotBlank(md5Key) && !DEFAULT_MERCHANT_SECRET.equals(md5Key)) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "MD5", md5Key);
-                if (SignUtil.verifySign(params, "MD5", sign, md5Key)) {
+                String sign = SignUtil.sign(params, "MD5", md5Key, null, null);
+                if (SignUtil.verify(params, "MD5", sign, md5Key, null, null)) {
                     passedAlgorithms.add("MD5");
                 } else {
                     failedAlgorithms.add("MD5");
@@ -361,27 +424,32 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
             String rsaPub = merchant.getApiKeyRsaPublic();
             if (StrUtil.isNotBlank(rsaPri) && StrUtil.isNotBlank(rsaPub)) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "RSA", rsaPri);
-                if (SignUtil.verifySign(params, "RSA", sign, rsaPub)) {
+                String sign = SignUtil.sign(params, "RSA", null, rsaPri, null);
+                if (SignUtil.verify(params, "RSA", sign, null, rsaPub, null)) {
                     passedAlgorithms.add("RSA");
                 } else {
                     failedAlgorithms.add("RSA");
                 }
+            } else if (StrUtil.isNotBlank(rsaPri) || StrUtil.isNotBlank(rsaPub)) {
+                notConfigured.add("RSA(不完整)");
             }
 
             String sm2Pri = getMerchantSm2PrivateKey(merchant);
-            if (StrUtil.isNotBlank(sm2Pri)) {
+            String sm2Pub = merchant.getApiKeySm2Public();
+            if (StrUtil.isNotBlank(sm2Pri) && StrUtil.isNotBlank(sm2Pub)) {
                 TreeMap<String, Object> params = buildTestParams(merchant.getMerchantNo());
-                String sign = SignUtil.generateSign(params, "SM2", sm2Pri);
-                if (SignUtil.verifySign(params, "SM2", sign, sm2Pri)) {
+                String sign = SignUtil.sign(params, "SM2", null, null, sm2Pri);
+                if (SignUtil.verify(params, "SM2", sign, null, null, sm2Pub)) {
                     passedAlgorithms.add("SM2");
                 } else {
                     failedAlgorithms.add("SM2");
                 }
+            } else if (StrUtil.isNotBlank(sm2Pri) || StrUtil.isNotBlank(sm2Pub)) {
+                notConfigured.add("SM2(不完整)");
             }
 
             String actual = String.format("通过:%s, 失败:%s, 未配置:%s",
-                    String.join(",", passedAlgorithms),
+                    passedAlgorithms.isEmpty() ? "无" : String.join(",", passedAlgorithms),
                     failedAlgorithms.isEmpty() ? "无" : String.join(",", failedAlgorithms),
                     notConfigured.isEmpty() ? "无" : String.join(",", notConfigured));
             result.setActualValue(actual);
@@ -392,7 +460,7 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
                 markWarning(result, "部分签名算法验证失败",
                         "请检查以下算法的密钥配置: " + String.join(", ", failedAlgorithms));
             } else {
-                markWarning(result, "未配置可用的签名密钥", "请至少配置一种签名算法的密钥");
+                markWarning(result, "未配置可用的签名密钥", "请至少配置一种签名算法的完整密钥对");
             }
         } catch (Exception e) {
             markError(result, "签名自验证异常: " + e.getMessage());
@@ -490,6 +558,30 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
         if (StrUtil.isNotBlank(request.getCallbackUrl())) {
             return request.getCallbackUrl();
         }
+        if (merchantPayConfigMapper != null && merchantInfo != null) {
+            try {
+                LambdaQueryWrapper<com.payhub.pay.entity.MerchantPayConfig> w =
+                        new LambdaQueryWrapper<>();
+                w.eq(com.payhub.pay.entity.MerchantPayConfig::getMerchantNo, merchantInfo.getMerchantNo())
+                        .eq(com.payhub.pay.entity.MerchantPayConfig::getStatus, 1)
+                        .orderByAsc(com.payhub.pay.entity.MerchantPayConfig::getPriority)
+                        .last("LIMIT 1");
+                com.payhub.pay.entity.MerchantPayConfig cfg = merchantPayConfigMapper.selectOne(w);
+                if (cfg != null) {
+                    try {
+                        java.lang.reflect.Field f = com.payhub.pay.entity.MerchantPayConfig.class
+                                .getDeclaredField("notifyUrl");
+                        f.setAccessible(true);
+                        Object notifyUrl = f.get(cfg);
+                        if (notifyUrl != null && StrUtil.isNotBlank(String.valueOf(notifyUrl))) {
+                            return String.valueOf(notifyUrl);
+                        }
+                    } catch (NoSuchFieldException ignore) {
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+        }
         return null;
     }
 
@@ -497,26 +589,18 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
         if (StrUtil.isNotBlank(request.getSignType())) {
             return request.getSignType().toUpperCase();
         }
-        if (StrUtil.isNotBlank(merchantInfo.getApiKeyMd5())) {
-            return "MD5";
-        }
-        if (StrUtil.isNotBlank(merchantInfo.getApiKeyRsaPrivate())) {
-            return "RSA";
+        if (merchantInfo != null) {
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeyMd5())) {
+                return "MD5";
+            }
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeyRsaPrivate())) {
+                return "RSA";
+            }
+            if (StrUtil.isNotBlank(merchantInfo.getApiKeySm2Private())) {
+                return "SM2";
+            }
         }
         return "MD5";
-    }
-
-    private String getSignKey(MerchantInfo merchant, String signType) {
-        switch (signType.toUpperCase()) {
-            case "MD5":
-                return getMerchantMd5Secret(merchant);
-            case "RSA":
-                return getMerchantRsaPrivateKey(merchant);
-            case "SM2":
-                return getMerchantSm2PrivateKey(merchant);
-            default:
-                return getMerchantMd5Secret(merchant);
-        }
     }
 
     private String getMerchantMd5Secret(MerchantInfo merchantInfo) {
@@ -572,7 +656,8 @@ public class MerchantConfigTestServiceImpl implements MerchantConfigTestService 
         return params;
     }
 
-    private TreeMap<String, Object> buildNotifyParams(String merchantNo, String orderNo, MerchantConfigTestRequest request) {
+    private TreeMap<String, Object> buildNotifyParams(String merchantNo, String orderNo,
+                                                      MerchantConfigTestRequest request) {
         TreeMap<String, Object> params = new TreeMap<>();
         params.put("merchantNo", merchantNo);
         params.put("orderNo", orderNo);

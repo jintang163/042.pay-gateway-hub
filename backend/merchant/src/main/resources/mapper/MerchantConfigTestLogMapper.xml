@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.merchant.mapper.MerchantConfigTestLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.payhub.merchant.entity.MerchantConfigTestLog">
+        <id column="id" property="id"/>
+        <result column="log_no" property="logNo"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="total_tests" property="totalTests"/>
+        <result column="passed_tests" property="passedTests"/>
+        <result column="failed_tests" property="failedTests"/>
+        <result column="overall_status" property="overallStatus"/>
+        <result column="overall_status_desc" property="overallStatusDesc"/>
+        <result column="callback_url" property="callbackUrl"/>
+        <result column="sign_type" property="signType"/>
+        <result column="total_time_ms" property="totalTimeMs"/>
+        <result column="items_json" property="itemsJson"/>
+        <result column="summary" property="summary"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, log_no, merchant_no, merchant_name, total_tests, passed_tests, failed_tests,
+        overall_status, overall_status_desc, callback_url, sign_type, total_time_ms,
+        items_json, summary, operator_id, operator_name, remark, created_at, updated_at, deleted
+    </sql>
+
+</mapper>
