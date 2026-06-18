@@ -24,6 +24,7 @@ const CallbackSimulator = lazy(() => import('@/pages/CallbackSimulator'));
 const FeeConfig = lazy(() => import('@/pages/FeeConfig'));
 const PaymentPageEditor = lazy(() => import('@/pages/PaymentPageEditor'));
 const PaymentPageH5 = lazy(() => import('@/pages/PaymentPageH5'));
+const MerchantConfigTest = lazy(() => import('@/pages/MerchantConfigTest'));
 
 export interface RouteConfigItem {
   path: string;
@@ -131,6 +132,12 @@ export const routesConfig: RouteConfigItem[] = [
     name: '沙箱测试',
     icon: 'ExperimentOutlined',
     element: <SandboxTest />,
+  },
+  {
+    path: 'merchant-config-test',
+    name: '一键测试',
+    icon: 'RocketOutlined',
+    element: <MerchantConfigTest />,
   },
   {
     path: 'callback-simulator',

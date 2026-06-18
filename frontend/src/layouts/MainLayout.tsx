@@ -18,6 +18,7 @@ import {
   BulbOutlined,
   MoneyCollectOutlined,
   PaletteOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import type { MenuProps } from 'antd';
@@ -41,6 +42,7 @@ const iconMap: Record<string, React.ReactNode> = {
   BulbOutlined: <BulbOutlined />,
   MoneyCollectOutlined: <MoneyCollectOutlined />,
   PaletteOutlined: <PaletteOutlined />,
+  RocketOutlined: <RocketOutlined />,
 };
 
 const buildMenuItems = (items: typeof routesConfig, prefix = ''): MenuItem[] => {
