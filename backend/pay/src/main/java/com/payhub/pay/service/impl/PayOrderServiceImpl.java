@@ -32,9 +32,12 @@ import com.payhub.pay.service.PayOrderService;
 import com.payhub.pay.service.PayRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.payhub.settlement.service.AgentProfitService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -65,6 +68,10 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
 
     @Autowired(required = false)
     private FeeRuleService feeRuleService;
+
+    @Autowired(required = false)
+    @Lazy
+    private AgentProfitService agentProfitService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -346,6 +353,17 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             log.info("订单支付成功, orderNo={}, channelTradeNo={}", order.getOrderNo(), notifyResult.getChannelTradeNo());
 
             notifyMerchantAsync(order);
+
+            if (agentProfitService != null) {
+                try {
+                    BigDecimal feeAmount = order.getFeeAmount() != null ? order.getFeeAmount() : BigDecimal.ZERO;
+                    agentProfitService.calculateProfit(order.getOrderNo(), order.getMerchantNo(),
+                            order.getPayAmount(), feeAmount);
+                    log.info("代理分润计算触发成功, orderNo={}", order.getOrderNo());
+                } catch (Exception e) {
+                    log.error("代理分润计算触发失败, orderNo={}", order.getOrderNo(), e);
+                }
+            }
         } else if ("FAIL".equalsIgnoreCase(notifyResult.getPayStatus())
                 || PayStatusEnum.FAIL.getCode().toString().equals(notifyResult.getPayStatus())) {
             order.setPayStatus(PayStatusEnum.FAIL.getCode());

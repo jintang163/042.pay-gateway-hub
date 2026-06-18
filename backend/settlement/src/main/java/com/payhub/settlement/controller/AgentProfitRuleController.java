@@ -1,7 +1,10 @@
 package com.payhub.settlement.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.payhub.common.context.CurrentUserContext;
+import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.Result;
+import com.payhub.common.result.ResultCode;
 import com.payhub.settlement.dto.AgentProfitRuleSaveRequest;
 import com.payhub.settlement.dto.AgentProfitRuleVO;
 import com.payhub.settlement.service.AgentProfitRuleService;
@@ -22,12 +25,25 @@ public class AgentProfitRuleController {
 
     @PostMapping("/save")
     public Result<Void> save(@Valid @RequestBody AgentProfitRuleSaveRequest request) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(request.getMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限为其他商户设置分润规则");
+            }
+        }
         agentProfitRuleService.saveRule(request);
         return Result.success();
     }
 
     @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        if (!CurrentUserContext.isAdmin()) {
+            AgentProfitRuleVO vo = agentProfitRuleService.getRuleById(id);
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (vo != null && !currentMerchantNo.equals(vo.getMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限删除其他商户的分润规则");
+            }
+        }
         agentProfitRuleService.deleteRule(id);
         return Result.success();
     }
@@ -35,17 +51,35 @@ public class AgentProfitRuleController {
     @GetMapping("/{id}")
     public Result<AgentProfitRuleVO> getById(@PathVariable Long id) {
         AgentProfitRuleVO vo = agentProfitRuleService.getRuleById(id);
+        if (!CurrentUserContext.isAdmin() && vo != null) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(vo.getMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看该分润规则");
+            }
+        }
         return Result.success(vo);
     }
 
     @GetMapping("/by-rule-no/{ruleNo}")
     public Result<AgentProfitRuleVO> getByRuleNo(@PathVariable String ruleNo) {
         AgentProfitRuleVO vo = agentProfitRuleService.getRuleByRuleNo(ruleNo);
+        if (!CurrentUserContext.isAdmin() && vo != null) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(vo.getMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看该分润规则");
+            }
+        }
         return Result.success(vo);
     }
 
     @GetMapping("/listByMerchant/{merchantNo}")
     public Result<List<AgentProfitRuleVO>> listByMerchantNo(@PathVariable String merchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的分润规则");
+            }
+        }
         List<AgentProfitRuleVO> list = agentProfitRuleService.listByMerchantNo(merchantNo);
         return Result.success(list);
     }
@@ -62,7 +96,12 @@ public class AgentProfitRuleController {
         Map<String, Object> params = new HashMap<>();
         params.put("ruleNo", ruleNo);
         params.put("ruleName", ruleName);
-        params.put("merchantNo", merchantNo);
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            params.put("merchantNo", currentMerchantNo);
+        } else {
+            params.put("merchantNo", merchantNo);
+        }
         params.put("agentLevel", agentLevel);
         params.put("status", status);
         IPage<AgentProfitRuleVO> page = agentProfitRuleService.listPage(current, size, params);
@@ -71,6 +110,13 @@ public class AgentProfitRuleController {
 
     @PostMapping("/{id}/toggle")
     public Result<Void> toggle(@PathVariable Long id) {
+        if (!CurrentUserContext.isAdmin()) {
+            AgentProfitRuleVO vo = agentProfitRuleService.getRuleById(id);
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (vo != null && !currentMerchantNo.equals(vo.getMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限修改其他商户的分润规则");
+            }
+        }
         agentProfitRuleService.toggleRule(id);
         return Result.success();
     }

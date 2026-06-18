@@ -14,10 +14,13 @@ import com.payhub.settlement.entity.AgentProfitRecord;
 import com.payhub.settlement.entity.AgentProfitRule;
 import com.payhub.settlement.entity.AgentRelation;
 import com.payhub.settlement.enums.AgentProfitStatusEnum;
+import com.payhub.settlement.entity.PaySplitDetail;
+import com.payhub.settlement.enums.AgentSettleTypeEnum;
 import com.payhub.settlement.mapper.AgentProfitRecordMapper;
 import com.payhub.settlement.mapper.AgentProfitRuleMapper;
 import com.payhub.settlement.mapper.AgentRelationMapper;
 import com.payhub.settlement.service.AgentProfitService;
+import com.payhub.settlement.service.SplitEngineService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -39,6 +42,12 @@ public class AgentProfitServiceImpl extends ServiceImpl<AgentProfitRecordMapper,
     @Autowired
     private AgentProfitRuleMapper agentProfitRuleMapper;
 
+    @Autowired
+    private SplitEngineService splitEngineService;
+
+    @Autowired
+    private com.payhub.pay.mapper.PayOrderMapper payOrderMapper;
+
     @Override
     public AgentProfitRecordVO getProfitRecordById(Long id) {
         AgentProfitRecord record = this.getById(id);
@@ -50,7 +59,7 @@ public class AgentProfitServiceImpl extends ServiceImpl<AgentProfitRecordMapper,
 
     @Override
     public AgentProfitRecordVO getProfitRecordByProfitNo(String profitNo) {
-        AgentProfitRecord record = baseMapper.selectOne(null);
+        AgentProfitRecord record = baseMapper.selectByProfitNo(profitNo);
         return record != null ? convertToVO(record) : null;
     }
 
@@ -139,10 +148,42 @@ public class AgentProfitServiceImpl extends ServiceImpl<AgentProfitRecordMapper,
             return;
         }
         for (AgentProfitRecord record : pendingRecords) {
-            if (AgentProfitStatusEnum.PENDING.getCode().equals(record.getProfitStatus())) {
-                record.setProfitStatus(AgentProfitStatusEnum.SETTLED.getCode());
-                this.updateById(record);
+            if (!AgentProfitStatusEnum.PENDING.getCode().equals(record.getProfitStatus())) {
+                continue;
             }
+            List<AgentProfitRule> rules = agentProfitRuleMapper.selectByMerchantNo(record.getAgentMerchantNo());
+            boolean isStackedSettle = false;
+            if (CollUtil.isNotEmpty(rules)) {
+                for (AgentProfitRule rule : rules) {
+                    if (rule.getAgentLevel() != null && rule.getAgentLevel().equals(record.getAgentLevel())
+                            && AgentSettleTypeEnum.STACKED.getCode().equals(rule.getSettleType())) {
+                        isStackedSettle = true;
+                        break;
+                    }
+                }
+            }
+            if (isStackedSettle) {
+                try {
+                    com.payhub.pay.entity.PayOrder payOrder = payOrderMapper.selectOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.payhub.pay.entity.PayOrder>()
+                                    .eq(com.payhub.pay.entity.PayOrder::getOrderNo, record.getOrderNo())
+                                    .last("LIMIT 1"));
+                    if (payOrder != null) {
+                        List<PaySplitDetail> splitDetails = splitEngineService.executeSplit(payOrder);
+                        log.info("代理分润叠加分账执行成功: profitNo={}, orderNo={}, splitCount={}",
+                                record.getProfitNo(), record.getOrderNo(), splitDetails.size());
+                    }
+                } catch (Exception e) {
+                    log.error("代理分润叠加分账执行失败: profitNo={}, orderNo={}",
+                            record.getProfitNo(), record.getOrderNo(), e);
+                    record.setProfitStatus(AgentProfitStatusEnum.FAILED.getCode());
+                    record.setRemark("分账执行失败: " + e.getMessage());
+                    this.updateById(record);
+                    continue;
+                }
+            }
+            record.setProfitStatus(AgentProfitStatusEnum.SETTLED.getCode());
+            this.updateById(record);
         }
         log.info("代理分润结算完成: settleDate={}, count={}", settleDate, pendingRecords.size());
     }

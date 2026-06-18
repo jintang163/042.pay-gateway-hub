@@ -145,4 +145,31 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="selectByProfitNo" resultMap="AgentProfitRecordMap">
+        SELECT
+            id,
+            profit_no,
+            order_no,
+            merchant_no,
+            merchant_name,
+            agent_merchant_no,
+            agent_merchant_name,
+            agent_level,
+            order_amount,
+            fee_amount,
+            profit_amount,
+            commission_rate,
+            settle_date,
+            profit_status,
+            settlement_id,
+            settlement_no,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM agent_profit_record
+        WHERE deleted = 0 AND profit_no = #{profitNo}
+        LIMIT 1
+    </select>
+
 </mapper>

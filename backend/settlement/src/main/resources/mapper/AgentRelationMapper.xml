@@ -45,6 +45,9 @@
             <if test="params.parentMerchantNo != null and params.parentMerchantNo != ''">
                 AND parent_merchant_no = #{params.parentMerchantNo}
             </if>
+            <if test="params.parentMerchantNoPath != null and params.parentMerchantNoPath != ''">
+                AND (merchant_no = #{params.parentMerchantNoPath} OR agent_path LIKE CONCAT('%', #{params.parentMerchantNoPath}, '%'))
+            </if>
             <if test="params.agentLevel != null">
                 AND agent_level = #{params.agentLevel}
             </if>

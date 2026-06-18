@@ -20,4 +20,6 @@ public interface AgentProfitRecordMapper extends BaseMapper<AgentProfitRecord> {
     BigDecimal selectTotalProfitByAgent(@Param("agentMerchantNo") String agentMerchantNo, @Param("profitStatus") Integer profitStatus);
 
     List<AgentProfitRecord> selectBySettleDate(@Param("settleDate") String settleDate);
+
+    AgentProfitRecord selectByProfitNo(@Param("profitNo") String profitNo);
 }

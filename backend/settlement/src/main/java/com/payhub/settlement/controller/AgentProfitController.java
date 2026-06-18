@@ -1,7 +1,10 @@
 package com.payhub.settlement.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.payhub.common.context.CurrentUserContext;
+import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.Result;
+import com.payhub.common.result.ResultCode;
 import com.payhub.settlement.dto.AgentProfitRecordVO;
 import com.payhub.settlement.service.AgentProfitService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +25,12 @@ public class AgentProfitController {
     @GetMapping("/{id}")
     public Result<AgentProfitRecordVO> getById(@PathVariable Long id) {
         AgentProfitRecordVO vo = agentProfitService.getProfitRecordById(id);
+        if (!CurrentUserContext.isAdmin() && vo != null) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(vo.getAgentMerchantNo())) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看该分润记录");
+            }
+        }
         return Result.success(vo);
     }
 
@@ -42,7 +51,12 @@ public class AgentProfitController {
         params.put("profitNo", profitNo);
         params.put("orderNo", orderNo);
         params.put("merchantNo", merchantNo);
-        params.put("agentMerchantNo", agentMerchantNo);
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            params.put("agentMerchantNo", currentMerchantNo);
+        } else {
+            params.put("agentMerchantNo", agentMerchantNo);
+        }
         params.put("agentLevel", agentLevel);
         params.put("profitStatus", profitStatus);
         params.put("settleDate", settleDate);
@@ -54,6 +68,12 @@ public class AgentProfitController {
 
     @GetMapping("/list-by-agent/{agentMerchantNo}")
     public Result<List<AgentProfitRecordVO>> listByAgentMerchantNo(@PathVariable String agentMerchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(agentMerchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的分润记录");
+            }
+        }
         List<AgentProfitRecordVO> list = agentProfitService.listByAgentMerchantNo(agentMerchantNo);
         return Result.success(list);
     }
@@ -62,12 +82,21 @@ public class AgentProfitController {
     public Result<BigDecimal> getTotalProfit(
             @PathVariable String agentMerchantNo,
             @RequestParam(required = false) Integer profitStatus) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(agentMerchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的分润统计");
+            }
+        }
         BigDecimal total = agentProfitService.getTotalProfit(agentMerchantNo, profitStatus);
         return Result.success(total);
     }
 
     @PostMapping("/settle/{settleDate}")
     public Result<Void> settleAgentProfit(@PathVariable String settleDate) {
+        if (!CurrentUserContext.isAdmin()) {
+            throw new BusinessException(ResultCode.PERMISSION_DENIED, "仅管理员可执行分润结算");
+        }
         agentProfitService.settleAgentProfit(settleDate);
         return Result.success();
     }

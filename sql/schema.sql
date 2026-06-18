@@ -742,3 +742,128 @@ CREATE TABLE IF NOT EXISTS `merchant_config_test_log` (
   KEY `idx_overall_status` (`overall_status`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户配置测试记录表';
+
+-- -----------------------------------------------
+-- 24. 代理关系表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_relation` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
+  `merchant_name` VARCHAR(128) NOT NULL COMMENT '商户名称',
+  `parent_merchant_no` VARCHAR(32) DEFAULT NULL COMMENT '上级商户编号',
+  `parent_merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '上级商户名称',
+  `agent_level` INT NOT NULL DEFAULT 1 COMMENT '代理层级 1=一级 2=二级 ...',
+  `agent_path` VARCHAR(512) DEFAULT NULL COMMENT '代理路径 如：M000001/M000002/M000003',
+  `commission_rate` DECIMAL(10,4) DEFAULT 0.0000 COMMENT '分润比例(百分比)',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0禁用 1启用',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_no` (`merchant_no`),
+  KEY `idx_parent_merchant_no` (`parent_merchant_no`),
+  KEY `idx_agent_level` (`agent_level`),
+  KEY `idx_agent_path` (`agent_path`(255)),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='代理关系表';
+
+-- -----------------------------------------------
+-- 25. 代理分润规则表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_profit_rule` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `rule_no` VARCHAR(32) NOT NULL COMMENT '规则编号',
+  `rule_name` VARCHAR(128) NOT NULL COMMENT '规则名称',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '代理商号',
+  `merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '代理商名称',
+  `agent_level` INT NOT NULL DEFAULT 1 COMMENT '适用的下级层级',
+  `commission_rate` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '分润比例(百分比)',
+  `min_commission` DECIMAL(18,2) DEFAULT 0.00 COMMENT '最低分润金额(分)',
+  `settle_type` TINYINT NOT NULL DEFAULT 0 COMMENT '结算方式：0单独结算 1叠加分账',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0禁用 1启用',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rule_no` (`rule_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_agent_level` (`agent_level`),
+  KEY `idx_settle_type` (`settle_type`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='代理分润规则表';
+
+-- -----------------------------------------------
+-- 26. 代理分润记录表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_profit_record` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `profit_no` VARCHAR(32) NOT NULL COMMENT '分润单号',
+  `order_no` VARCHAR(64) NOT NULL COMMENT '平台订单号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '下级商户号',
+  `merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '下级商户名称',
+  `agent_merchant_no` VARCHAR(32) NOT NULL COMMENT '代理商号',
+  `agent_merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '代理商名称',
+  `agent_level` INT NOT NULL DEFAULT 1 COMMENT '代理层级',
+  `order_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '订单金额(分)',
+  `fee_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '手续费金额(分)',
+  `profit_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '分润金额(分)',
+  `commission_rate` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '分润比例(百分比)',
+  `settle_date` VARCHAR(16) NOT NULL COMMENT '结算日期 yyyy-MM-dd',
+  `profit_status` TINYINT NOT NULL DEFAULT 0 COMMENT '分润状态：0待结算 1已结算 2结算失败',
+  `settlement_id` BIGINT DEFAULT NULL COMMENT '结算记录ID',
+  `settlement_no` VARCHAR(32) DEFAULT NULL COMMENT '结算单号',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_profit_no` (`profit_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_agent_merchant_no` (`agent_merchant_no`),
+  KEY `idx_agent_level` (`agent_level`),
+  KEY `idx_settle_date` (`settle_date`),
+  KEY `idx_profit_status` (`profit_status`),
+  KEY `idx_settlement_id` (`settlement_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='代理分润记录表';
+
+-- -----------------------------------------------
+-- 27. 代理佣金提现表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_withdraw` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `withdraw_no` VARCHAR(32) NOT NULL COMMENT '提现单号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户号',
+  `merchant_name` VARCHAR(128) DEFAULT NULL COMMENT '商户名称',
+  `withdraw_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '提现金额(分)',
+  `actual_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '实际到账金额(分)',
+  `fee_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '手续费金额(分)',
+  `withdraw_status` TINYINT NOT NULL DEFAULT 0 COMMENT '提现状态：0待审核 1审核通过 2审核拒绝 3转账中 4提现成功 5提现失败',
+  `bank_name` VARCHAR(64) DEFAULT NULL COMMENT '开户银行',
+  `bank_account` VARCHAR(64) DEFAULT NULL COMMENT '银行账号',
+  `account_name` VARCHAR(128) DEFAULT NULL COMMENT '开户名',
+  `audit_user` VARCHAR(64) DEFAULT NULL COMMENT '审核人',
+  `audit_time` DATETIME DEFAULT NULL COMMENT '审核时间',
+  `audit_remark` VARCHAR(512) DEFAULT NULL COMMENT '审核备注',
+  `transfer_no` VARCHAR(64) DEFAULT NULL COMMENT '转账单号',
+  `transfer_channel` VARCHAR(32) DEFAULT NULL COMMENT '转账通道',
+  `transfer_time` DATETIME DEFAULT NULL COMMENT '转账时间',
+  `transfer_fail_reason` VARCHAR(512) DEFAULT NULL COMMENT '转账失败原因',
+  `transfer_retry_count` INT NOT NULL DEFAULT 0 COMMENT '转账重试次数',
+  `next_transfer_retry_time` DATETIME DEFAULT NULL COMMENT '下次转账重试时间',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_withdraw_no` (`withdraw_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_withdraw_status` (`withdraw_status`),
+  KEY `idx_next_transfer_retry` (`next_transfer_retry_time`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='代理佣金提现表';

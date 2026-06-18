@@ -23,4 +23,12 @@ public class AgentStatsVO implements Serializable {
     private Integer todayNewAgentCount;
 
     private Integer totalSubordinateCount;
+
+    private Integer totalOrderCount;
+
+    private BigDecimal totalOrderAmount;
+
+    private Integer todayOrderCount;
+
+    private BigDecimal todayOrderAmount;
 }

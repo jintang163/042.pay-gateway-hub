@@ -1,7 +1,10 @@
 package com.payhub.settlement.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.payhub.common.context.CurrentUserContext;
+import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.Result;
+import com.payhub.common.result.ResultCode;
 import com.payhub.settlement.dto.AgentRelationSaveRequest;
 import com.payhub.settlement.dto.AgentRelationVO;
 import com.payhub.settlement.dto.AgentStatsVO;
@@ -56,9 +59,14 @@ public class AgentRelationController {
             @RequestParam(required = false) Integer agentLevel,
             @RequestParam(required = false) Integer status) {
         Map<String, Object> params = new HashMap<>();
-        params.put("merchantNo", merchantNo);
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            params.put("parentMerchantNoPath", currentMerchantNo);
+        } else {
+            params.put("merchantNo", merchantNo);
+            params.put("parentMerchantNo", parentMerchantNo);
+        }
         params.put("merchantName", merchantName);
-        params.put("parentMerchantNo", parentMerchantNo);
         params.put("agentLevel", agentLevel);
         params.put("status", status);
         IPage<AgentRelationVO> page = agentRelationService.listPage(current, size, params);
@@ -67,24 +75,48 @@ public class AgentRelationController {
 
     @GetMapping("/tree/{merchantNo}")
     public Result<List<AgentTreeVO>> getAgentTree(@PathVariable String merchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的代理树");
+            }
+        }
         List<AgentTreeVO> tree = agentRelationService.getAgentTree(merchantNo);
         return Result.success(tree);
     }
 
     @GetMapping("/subordinates/direct/{parentMerchantNo}")
     public Result<List<AgentRelationVO>> listDirectSubordinates(@PathVariable String parentMerchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(parentMerchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的下级");
+            }
+        }
         List<AgentRelationVO> list = agentRelationService.listDirectSubordinates(parentMerchantNo);
         return Result.success(list);
     }
 
     @GetMapping("/subordinates/all/{merchantNo}")
     public Result<List<AgentRelationVO>> listAllSubordinates(@PathVariable String merchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的下级");
+            }
+        }
         List<AgentRelationVO> list = agentRelationService.listAllSubordinates(merchantNo);
         return Result.success(list);
     }
 
     @GetMapping("/stats/{merchantNo}")
     public Result<AgentStatsVO> getAgentStats(@PathVariable String merchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的统计数据");
+            }
+        }
         AgentStatsVO stats = agentRelationService.getAgentStats(merchantNo);
         return Result.success(stats);
     }

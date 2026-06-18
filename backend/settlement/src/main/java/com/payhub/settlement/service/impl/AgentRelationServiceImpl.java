@@ -8,6 +8,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
+import com.payhub.merchant.entity.MerchantInfo;
+import com.payhub.merchant.mapper.MerchantInfoMapper;
+import com.payhub.pay.entity.PayOrder;
+import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.settlement.dto.*;
 import com.payhub.settlement.entity.AgentProfitRecord;
 import com.payhub.settlement.entity.AgentRelation;
@@ -38,9 +42,26 @@ public class AgentRelationServiceImpl extends ServiceImpl<AgentRelationMapper, A
     @Autowired
     private AgentWithdrawService agentWithdrawService;
 
+    @Autowired
+    private MerchantInfoMapper merchantInfoMapper;
+
+    @Autowired
+    private PayOrderMapper payOrderMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveAgentRelation(AgentRelationSaveRequest request) {
+        MerchantInfo merchant = merchantInfoMapper.selectOne(new LambdaQueryWrapper<MerchantInfo>()
+                .eq(MerchantInfo::getMerchantNo, request.getMerchantNo())
+                .eq(MerchantInfo::getDeleted, 0)
+                .last("LIMIT 1"));
+        if (merchant == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "商户不存在：" + request.getMerchantNo());
+        }
+        if (request.getMerchantName() == null || request.getMerchantName().isEmpty()) {
+            request.setMerchantName(merchant.getMerchantName());
+        }
+
         AgentRelation relation;
         if (request.getId() != null) {
             relation = this.getById(request.getId());
@@ -196,6 +217,35 @@ public class AgentRelationServiceImpl extends ServiceImpl<AgentRelationMapper, A
                 .filter(r -> r.getCreatedAt() != null && r.getCreatedAt().toLocalDate().equals(LocalDateTime.now().toLocalDate()))
                 .count();
         stats.setTodayNewAgentCount((int) todayCount);
+
+        List<String> merchantNos = new ArrayList<>();
+        merchantNos.add(merchantNo);
+        for (AgentRelation sub : allSubordinates) {
+            merchantNos.add(sub.getMerchantNo());
+        }
+
+        LambdaQueryWrapper<PayOrder> orderWrapper = new LambdaQueryWrapper<>();
+        orderWrapper.in(PayOrder::getMerchantNo, merchantNos)
+                .eq(PayOrder::getPayStatus, 1)
+                .eq(PayOrder::getDeleted, 0);
+        List<PayOrder> allOrders = payOrderMapper.selectList(orderWrapper);
+        stats.setTotalOrderCount(allOrders.size());
+        BigDecimal totalOrderAmount = allOrders.stream()
+                .map(o -> o.getPayAmount() != null ? o.getPayAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        stats.setTotalOrderAmount(totalOrderAmount);
+
+        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
+        long todayOrderCount = allOrders.stream()
+                .filter(o -> o.getPayTime() != null && o.getPayTime().isAfter(todayStart))
+                .count();
+        stats.setTodayOrderCount((int) todayOrderCount);
+        BigDecimal todayOrderAmount = allOrders.stream()
+                .filter(o -> o.getPayTime() != null && o.getPayTime().isAfter(todayStart))
+                .map(o -> o.getPayAmount() != null ? o.getPayAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        stats.setTodayOrderAmount(todayOrderAmount);
+
         return stats;
     }
 

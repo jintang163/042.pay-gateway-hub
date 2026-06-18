@@ -27,6 +27,7 @@ const PaymentPageH5 = lazy(() => import('@/pages/PaymentPageH5'));
 const MerchantConfigTest = lazy(() => import('@/pages/MerchantConfigTest'));
 const AgentTree = lazy(() => import('@/pages/AgentTree'));
 const SubordinateMerchant = lazy(() => import('@/pages/SubordinateMerchant'));
+const AgentProfitRule = lazy(() => import('@/pages/AgentProfitRule'));
 const AgentProfit = lazy(() => import('@/pages/AgentProfit'));
 const AgentWithdraw = lazy(() => import('@/pages/AgentWithdraw'));
 
@@ -181,6 +182,11 @@ export const routesConfig: RouteConfigItem[] = [
         path: 'subordinate',
         name: '下级商户管理',
         element: <SubordinateMerchant />,
+      },
+      {
+        path: 'profit-rule',
+        name: '分润规则管理',
+        element: <AgentProfitRule />,
       },
       {
         path: 'profit',
