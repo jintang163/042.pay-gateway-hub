@@ -73,8 +73,8 @@ public class MerchantAutoAuditServiceImpl implements MerchantAutoAuditService {
         BusinessApiClient.BusinessVerifyResult verifyResult = businessApiClient.verifyBusiness(merchant, businessInfo);
 
         merchant.setBusinessVerifyPassed(verifyResult.isPassed() ? 1 : 0);
-        merchant.setBusinessVerifyResult(JsonUtils.toJsonString(businessInfo));
-        merchant.setBusinessVerifyTime(LocalDateTime.now());
+        merchant.setBusinessVerifyResult(verifyResult.getDecisionJson());
+        merchant.setBusinessVerifyTime(verifyResult.getVerifyTime());
 
         updateAuditStep(merchant, AuditStepEnum.BUSINESS_VERIFIED);
 

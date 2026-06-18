@@ -1,5 +1,5 @@
 import { request } from '@/utils/request';
-import type { Merchant, MerchantQueryParams, MerchantListResult, MerchantApplyRequest, AuditProgress } from '@/types/merchant';
+import type { Merchant, MerchantQueryParams, MerchantListResult, MerchantApplyRequest, AuditProgress, MerchantApplyResult } from '@/types/merchant';
 
 export const merchantApi = {
   list: (params: MerchantQueryParams) => {
@@ -11,7 +11,7 @@ export const merchantApi = {
   },
 
   apply: (data: MerchantApplyRequest) => {
-    return request.post<{ merchantId: string; merchantNo: string }>('/merchant/apply', data);
+    return request.post<MerchantApplyResult>('/merchant/apply', data);
   },
 
   audit: (data: { merchantNo: string; status: string; remark?: string; auditUserName?: string }) => {
@@ -57,5 +57,16 @@ export const merchantApi = {
 
   getAuditProgress: (merchantNo: string) => {
     return request.get<AuditProgress>(`/merchant/${merchantNo}/audit-progress`);
+  },
+
+  getManualAuditStats: () => {
+    return request.get<{
+      totalPending: number;
+      highRisk: number;
+      mediumRisk: number;
+      lowRisk: number;
+      needManual: number;
+      businessFail: number;
+    }>('/merchant/manual-audit-stats');
   },
 };

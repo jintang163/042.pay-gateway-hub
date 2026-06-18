@@ -9,7 +9,7 @@ import java.util.Map;
 
 public interface MerchantInfoService extends IService<MerchantInfo> {
 
-    String apply(MerchantApplyRequest request);
+    MerchantApplyResult apply(MerchantApplyRequest request);
 
     void audit(MerchantAuditRequest request);
 
@@ -22,4 +22,6 @@ public interface MerchantInfoService extends IService<MerchantInfo> {
     boolean testCallback(String merchantNo, String url);
 
     AuditProgressVO getAuditProgress(String merchantNo);
+
+    Map<String, Integer> getManualAuditStats();
 }

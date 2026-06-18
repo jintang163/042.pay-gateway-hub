@@ -20,6 +20,17 @@
         <result column="api_key_md5" property="apiKeyMd5"/>
         <result column="api_key_rsa_public" property="apiKeyRsaPublic"/>
         <result column="api_key_rsa_private" property="apiKeyRsaPrivate"/>
+        <result column="audit_step" property="auditStep"/>
+        <result column="risk_level" property="riskLevel"/>
+        <result column="risk_score" property="riskScore"/>
+        <result column="business_verify_passed" property="businessVerifyPassed"/>
+        <result column="business_verify_result" property="businessVerifyResult"/>
+        <result column="business_verify_time" property="businessVerifyTime"/>
+        <result column="auto_audit_passed" property="autoAuditPassed"/>
+        <result column="auto_audit_remark" property="autoAuditRemark"/>
+        <result column="auto_audit_time" property="autoAuditTime"/>
+        <result column="manual_audit_user" property="manualAuditUser"/>
+        <result column="manual_audit_time" property="manualAuditTime"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
         <result column="deleted" property="deleted"/>
@@ -44,6 +55,17 @@
             api_key_md5,
             api_key_rsa_public,
             api_key_rsa_private,
+            audit_step,
+            risk_level,
+            risk_score,
+            business_verify_passed,
+            business_verify_result,
+            business_verify_time,
+            auto_audit_passed,
+            auto_audit_remark,
+            auto_audit_time,
+            manual_audit_user,
+            manual_audit_time,
             created_at,
             updated_at,
             deleted
@@ -65,6 +87,12 @@
             <if test="params.status != null">
                 AND status = #{params.status}
             </if>
+            <if test="params.riskLevel != null and params.riskLevel != ''">
+                AND risk_level = #{params.riskLevel}
+            </if>
+            <if test="params.auditStep != null">
+                AND audit_step = #{params.auditStep}
+            </if>
             <if test="params.contactPhone != null and params.contactPhone != ''">
                 AND contact_phone = #{params.contactPhone}
             </if>
@@ -75,7 +103,14 @@
                 AND created_at <![CDATA[ <= ]]> #{params.endDate}
             </if>
         </where>
-        ORDER BY created_at DESC
+        ORDER BY
+            CASE risk_level
+                WHEN 'HIGH' THEN 1
+                WHEN 'MEDIUM' THEN 2
+                WHEN 'LOW' THEN 3
+                ELSE 4
+            END,
+            created_at DESC
     </select>
 
 </mapper>

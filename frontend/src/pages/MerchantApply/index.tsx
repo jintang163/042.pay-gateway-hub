@@ -140,7 +140,7 @@ const MerchantApply = () => {
         settlementAccountName: values.settleAccountName,
       };
       const result = await merchantApi.apply(requestData);
-      const mchNo = result && (result as any).merchantNo;
+      const mchNo = result?.merchantNo;
       if (mchNo) {
         setMerchantNo(mchNo);
       }

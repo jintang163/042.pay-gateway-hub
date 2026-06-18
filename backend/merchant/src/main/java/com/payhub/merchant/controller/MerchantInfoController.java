@@ -19,9 +19,9 @@ public class MerchantInfoController {
     private MerchantInfoService merchantInfoService;
 
     @PostMapping("/apply")
-    public Result<String> apply(@Valid @RequestBody MerchantApplyRequest request) {
-        String merchantNo = merchantInfoService.apply(request);
-        return Result.success(merchantNo);
+    public Result<MerchantApplyResult> apply(@Valid @RequestBody MerchantApplyRequest request) {
+        MerchantApplyResult result = merchantInfoService.apply(request);
+        return Result.success(result);
     }
 
     @PostMapping("/audit")
@@ -43,14 +43,24 @@ public class MerchantInfoController {
             @RequestParam(required = false) String merchantName,
             @RequestParam(required = false) String merchantNo,
             @RequestParam(required = false) Integer auditStatus,
+            @RequestParam(required = false) String riskLevel,
+            @RequestParam(required = false) Integer auditStep,
             @RequestParam(required = false) Integer status) {
         Map<String, Object> params = new HashMap<>();
         params.put("merchantName", merchantName);
         params.put("merchantNo", merchantNo);
         params.put("auditStatus", auditStatus);
+        params.put("riskLevel", riskLevel);
+        params.put("auditStep", auditStep);
         params.put("status", status);
         IPage<MerchantVO> page = merchantInfoService.listPage(current, size, params);
         return Result.success(page);
+    }
+
+    @GetMapping("/manual-audit-stats")
+    public Result<Map<String, Integer>> getManualAuditStats() {
+        Map<String, Integer> stats = merchantInfoService.getManualAuditStats();
+        return Result.success(stats);
     }
 
     @PostMapping("/resetApiKey")

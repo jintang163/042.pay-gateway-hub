@@ -3,6 +3,7 @@ package com.payhub.merchant.dto;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -50,6 +51,25 @@ public class AuditProgressVO implements Serializable {
     private String auditRemark;
 
     private List<AuditStepItem> steps;
+
+    private VerifyDetail verifyDetail;
+
+    @Data
+    public static class VerifyDetail implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private String verifyId;
+        private String verifyVendor;
+        private String verifySource;
+        private String verifyRequestId;
+        private Boolean fallbackUsed;
+        private BigDecimal matchOverallScore;
+        private List<String> decisionReasons;
+        private String failReason;
+        private String rawRequest;
+        private String rawResponse;
+        private String verifiedBy;
+        private LocalDateTime verifyTime;
+    }
 
     @Data
     public static class AuditStepItem implements Serializable {

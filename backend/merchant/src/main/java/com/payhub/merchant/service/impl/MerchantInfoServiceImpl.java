@@ -1,7 +1,10 @@
 package com.payhub.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -21,7 +24,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +46,7 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public String apply(MerchantApplyRequest request) {
+    public MerchantApplyResult apply(MerchantApplyRequest request) {
         LambdaQueryWrapper<MerchantInfo> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(MerchantInfo::getBusinessLicenseNo, request.getBusinessLicenseNo());
         Long count = this.count(wrapper);
@@ -49,6 +55,7 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         }
 
         String merchantNo = SnowflakeIdUtil.generateMerchantNo();
+        AuditStepEnum step = AuditStepEnum.DATA_SUBMITTED;
 
         MerchantInfo merchant = new MerchantInfo();
         merchant.setMerchantNo(merchantNo);
@@ -63,15 +70,33 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         merchant.setSettlementAccountName(request.getSettlementAccountName());
         merchant.setAuditStatus(0);
         merchant.setStatus(1);
-        merchant.setAuditStep(AuditStepEnum.DATA_SUBMITTED.getCode());
+        merchant.setAuditStep(step.getCode());
 
         this.save(merchant);
 
         log.info("商户入驻申请提交成功: merchantNo={}, merchantName={}", merchantNo, request.getMerchantName());
 
-        merchantAutoAuditService.triggerAutoAudit(merchantNo);
+        final String finalMerchantNo = merchantNo;
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    log.debug("事务已提交，触发异步审核, merchantNo={}", finalMerchantNo);
+                    merchantAutoAuditService.triggerAutoAudit(finalMerchantNo);
+                }
+            });
+        } else {
+            merchantAutoAuditService.triggerAutoAudit(merchantNo);
+        }
 
-        return merchantNo;
+        return MerchantApplyResult.builder()
+                .merchantNo(merchantNo)
+                .merchantName(request.getMerchantName())
+                .auditStep(step.getCode())
+                .auditStepName(step.getName())
+                .auditStatus(0)
+                .auditStatusDesc("待审核")
+                .build();
     }
 
     @Override
@@ -324,6 +349,10 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         vo.setManualAuditUser(merchant.getManualAuditUser());
         vo.setManualAuditTime(merchant.getManualAuditTime());
 
+        if (StrUtil.isNotBlank(merchant.getBusinessVerifyResult())) {
+            vo.setVerifyDetail(parseVerifyDetail(merchant.getBusinessVerifyResult()));
+        }
+
         List<AuditProgressVO.AuditStepItem> stepItems = buildStepItems(merchant);
         vo.setSteps(stepItems);
 
@@ -374,5 +403,73 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         }
         item.setTime(time);
         return item;
+    }
+
+    @SuppressWarnings("unchecked")
+    private AuditProgressVO.VerifyDetail parseVerifyDetail(String decisionJson) {
+        try {
+            Map<String, Object> map = JsonUtils.parseObject(decisionJson, Map.class);
+            if (map == null || map.isEmpty()) {
+                return null;
+            }
+            AuditProgressVO.VerifyDetail detail = new AuditProgressVO.VerifyDetail();
+            detail.setVerifyId((String) map.get("verifyId"));
+            detail.setVerifyVendor((String) map.get("verifyVendor"));
+            detail.setVerifySource((String) map.get("verifySource"));
+            detail.setVerifyRequestId((String) map.get("verifyRequestId"));
+            Object fallback = map.get("fallbackUsed");
+            detail.setFallbackUsed(Boolean.TRUE.equals(fallback));
+            Object score = map.get("matchOverallScore");
+            if (score != null) {
+                detail.setMatchOverallScore(new BigDecimal(score.toString()));
+            }
+            Object reasons = map.get("decisionReasons");
+            if (reasons instanceof List) {
+                detail.setDecisionReasons((List<String>) reasons);
+            }
+            detail.setFailReason((String) map.get("failReason"));
+            detail.setRawRequest((String) map.get("rawRequest"));
+            detail.setRawResponse((String) map.get("rawResponse"));
+            detail.setVerifiedBy((String) map.get("verifiedBy"));
+            Object time = map.get("verifyTime");
+            if (time != null) {
+                detail.setVerifyTime(LocalDateTime.parse(time.toString()));
+            }
+            return detail;
+        } catch (Exception e) {
+            log.warn("解析工商核验决策详情失败", e);
+            return null;
+        }
+    }
+
+    @Override
+    public Map<String, Integer> getManualAuditStats() {
+        Map<String, Integer> stats = new LinkedHashMap<>();
+
+        LambdaQueryWrapper<MerchantInfo> pendingAll = new LambdaQueryWrapper<>();
+        pendingAll.eq(MerchantInfo::getAuditStatus, 0);
+        stats.put("totalPending", Math.toIntExact(this.count(pendingAll)));
+
+        LambdaQueryWrapper<MerchantInfo> highRisk = new LambdaQueryWrapper<>();
+        highRisk.eq(MerchantInfo::getAuditStatus, 0).eq(MerchantInfo::getRiskLevel, "HIGH");
+        stats.put("highRisk", Math.toIntExact(this.count(highRisk)));
+
+        LambdaQueryWrapper<MerchantInfo> mediumRisk = new LambdaQueryWrapper<>();
+        mediumRisk.eq(MerchantInfo::getAuditStatus, 0).eq(MerchantInfo::getRiskLevel, "MEDIUM");
+        stats.put("mediumRisk", Math.toIntExact(this.count(mediumRisk)));
+
+        LambdaQueryWrapper<MerchantInfo> lowRisk = new LambdaQueryWrapper<>();
+        lowRisk.eq(MerchantInfo::getAuditStatus, 0).eq(MerchantInfo::getRiskLevel, "LOW");
+        stats.put("lowRisk", Math.toIntExact(this.count(lowRisk)));
+
+        LambdaQueryWrapper<MerchantInfo> needManual = new LambdaQueryWrapper<>();
+        needManual.eq(MerchantInfo::getAuditStatus, 0).eq(MerchantInfo::getAuditStep, AuditStepEnum.MANUAL_AUDITING.getCode());
+        stats.put("needManual", Math.toIntExact(this.count(needManual)));
+
+        LambdaQueryWrapper<MerchantInfo> businessFail = new LambdaQueryWrapper<>();
+        businessFail.eq(MerchantInfo::getAuditStatus, 0).eq(MerchantInfo::getBusinessVerifyPassed, 0);
+        stats.put("businessFail", Math.toIntExact(this.count(businessFail)));
+
+        return stats;
     }
 }

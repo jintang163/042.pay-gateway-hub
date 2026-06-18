@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const MerchantApply = lazy(() => import('@/pages/MerchantApply'));
+const MerchantAudit = lazy(() => import('@/pages/MerchantAudit'));
 const PayConfig = lazy(() => import('@/pages/PayConfig'));
 const OrderList = lazy(() => import('@/pages/OrderList'));
 const RefundList = lazy(() => import('@/pages/RefundList'));
@@ -46,6 +47,11 @@ export const routesConfig: RouteConfigItem[] = [
         path: 'apply',
         name: '商户入驻',
         element: <MerchantApply />,
+      },
+      {
+        path: 'audit',
+        name: '人工审核',
+        element: <MerchantAudit />,
       },
     ],
   },

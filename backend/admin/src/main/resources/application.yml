@@ -72,3 +72,11 @@ logging:
     name: logs/payhub.log
     max-size: 10MB
     max-history: 30
+
+business-api:
+  sandbox: true
+  url: https://openapi.example.com/business
+  app-key: change-me-in-production
+  app-secret: change-me-in-production
+  timeout-ms: 5000
+  retry-times: 2

@@ -31,9 +31,21 @@ public class BusinessInfoDTO implements Serializable {
 
     private String businessStatus;
 
-    private LocalDateTime verifyTime;
+    private BigDecimal matchScore;
+
+    private String matchScores;
+
+    private String verifyRequestId;
+
+    private String verifyVendor;
 
     private String verifySource;
 
-    private BigDecimal matchScore;
+    private LocalDateTime verifyTime;
+
+    private String verifyRawRequest;
+
+    private String verifyRawResponse;
+
+    private Boolean fallbackUsed;
 }
