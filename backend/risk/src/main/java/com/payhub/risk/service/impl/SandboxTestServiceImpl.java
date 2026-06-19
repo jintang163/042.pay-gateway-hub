@@ -88,8 +88,6 @@ public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper,
             actualResult = 0;
             errorMsg = "测试执行异常: " + e.getMessage();
             log.error("沙箱测试执行异常, testId={}, scene={}", testId, request.getTestScene(), e);
-        } finally {
-            SandboxContext.clear();
         }
 
         LocalDateTime endTime = LocalDateTime.now();

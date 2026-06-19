@@ -33,6 +33,25 @@ export interface SandboxTestResult {
   errorMessage?: string;
 }
 
+export interface SandboxTestResultVO {
+  testId: string;
+  merchantNo: string;
+  testScene: string;
+  testName: string;
+  payChannel: string;
+  payType: string;
+  payAmount: number;
+  expectResult: number;
+  actualResult: number;
+  success: boolean;
+  responseData: string;
+  notifyResult: string;
+  errorMsg: string;
+  costTime: number;
+  startTime: string;
+  endTime: string;
+}
+
 export interface SandboxSceneOption {
   code: string;
   name: string;

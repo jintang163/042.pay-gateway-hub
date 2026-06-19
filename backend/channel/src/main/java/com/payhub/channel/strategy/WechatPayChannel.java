@@ -9,6 +9,7 @@ import com.payhub.channel.client.SignUtil;
 import com.payhub.channel.config.ChannelProperties;
 import com.payhub.channel.dto.*;
 import com.payhub.channel.enums.PayChannelEnum;
+import com.payhub.common.context.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -71,7 +72,7 @@ public class WechatPayChannel extends AbstractPayChannel {
         String gatewayUrl = config.getGatewayUrl() + getWechatApiPath(request.getPayType());
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 UnifiedOrderResponse response = buildUnifiedOrderResponse(request);
                 saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "UNIFIED_ORDER",
                         gatewayUrl, requestData, JSON.toJSONString(response),
@@ -134,7 +135,7 @@ public class WechatPayChannel extends AbstractPayChannel {
         String gatewayUrl = config.getGatewayUrl() + "/pay/orderquery";
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 QueryOrderResponse response = buildQueryOrderResponse(orderNo, channelTradeNo);
                 saveChannelLog(null, orderNo, "QUERY_ORDER",
                         gatewayUrl, requestData, JSON.toJSONString(response),
@@ -205,7 +206,7 @@ public class WechatPayChannel extends AbstractPayChannel {
         String gatewayUrl = config.getGatewayUrl() + "/secapi/pay/refund";
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 RefundResponse response = buildRefundResponse(request);
                 saveChannelLog(null, request.getOrderNo(), "REFUND",
                         gatewayUrl, requestData, JSON.toJSONString(response),
@@ -267,7 +268,7 @@ public class WechatPayChannel extends AbstractPayChannel {
         String gatewayUrl = config.getGatewayUrl() + "/pay/refundquery";
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 QueryRefundResponse response = buildQueryRefundResponse(refundNo, channelRefundNo, null);
                 saveChannelLog(null, null, "QUERY_REFUND",
                         gatewayUrl, requestData, JSON.toJSONString(response),
@@ -373,7 +374,7 @@ public class WechatPayChannel extends AbstractPayChannel {
 
     @Override
     public boolean verifyNotify(Map<String, String> params) {
-        if (channelProperties.getWechat().getSandboxMode() == 1) {
+        if (SandboxContext.isSandboxMode() || channelProperties.getWechat().getSandboxMode() == 1) {
             return super.verifyNotify(params);
         }
         return SignUtil.wechatVerify(params, channelProperties.getWechat().getApiKey());

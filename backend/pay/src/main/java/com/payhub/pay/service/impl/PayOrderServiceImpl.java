@@ -12,6 +12,7 @@ import com.payhub.channel.dto.UnifiedOrderResponse;
 import com.payhub.channel.strategy.PayChannelStrategy;
 import com.payhub.channel.strategy.PayChannelStrategyFactory;
 import com.payhub.common.enums.PayStatusEnum;
+import com.payhub.common.context.SandboxContext;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.HttpUtil;
@@ -431,10 +432,20 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
         if (order == null || StrUtil.isBlank(order.getOrderNo())) {
             return;
         }
+        boolean sandboxMode = SandboxContext.isSandboxMode();
+        String sandboxScene = SandboxContext.getScene();
         try {
             long delaySeconds = RandomUtil.randomLong(1, 4);
-            log.info("沙箱环境模拟异步通知, orderNo={}, 延迟{}秒执行", order.getOrderNo(), delaySeconds);
+            log.info("沙箱环境模拟异步通知, orderNo={}, 延迟{}秒执行, sandboxMode={}, scene={}",
+                    order.getOrderNo(), delaySeconds, sandboxMode, sandboxScene);
             TimeUnit.SECONDS.sleep(delaySeconds);
+
+            if (sandboxMode) {
+                SandboxContext.setSandboxMode(true);
+                if (sandboxScene != null) {
+                    SandboxContext.setScene(sandboxScene);
+                }
+            }
 
             Map<String, String> notifyParams = new HashMap<>();
             notifyParams.put("orderNo", order.getOrderNo());
@@ -445,7 +456,7 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             String body = JSON.toJSONString(notifyParams);
 
             int notifyCount = 1;
-            if (com.payhub.channel.sandbox.SandboxSceneSimulator.shouldRepeatNotify()) {
+            if (sandboxMode && com.payhub.channel.sandbox.SandboxSceneSimulator.shouldRepeatNotify()) {
                 notifyCount = 3;
                 log.info("沙箱场景：重复通知，将发送{}次通知", notifyCount);
             }
@@ -466,6 +477,8 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             log.warn("沙箱模拟异步通知被中断, orderNo={}", order.getOrderNo());
         } catch (Exception e) {
             log.error("沙箱模拟异步通知失败, orderNo={}", order.getOrderNo(), e);
+        } finally {
+            SandboxContext.clear();
         }
     }
 

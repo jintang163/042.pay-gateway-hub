@@ -9,6 +9,7 @@ import com.payhub.channel.client.SignUtil;
 import com.payhub.channel.config.ChannelProperties;
 import com.payhub.channel.dto.*;
 import com.payhub.channel.enums.PayChannelEnum;
+import com.payhub.common.context.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -68,7 +69,7 @@ public class AlipayChannel extends AbstractPayChannel {
         String requestData = JSON.toJSONString(params);
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 UnifiedOrderResponse response = buildUnifiedOrderResponse(request);
                 saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "UNIFIED_ORDER",
                         config.getGatewayUrl(), requestData, JSON.toJSONString(response),
@@ -141,7 +142,7 @@ public class AlipayChannel extends AbstractPayChannel {
         String requestData = JSON.toJSONString(params);
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 QueryOrderResponse response = buildQueryOrderResponse(orderNo, channelTradeNo);
                 saveChannelLog(null, orderNo, "QUERY_ORDER",
                         config.getGatewayUrl(), requestData, JSON.toJSONString(response),
@@ -219,7 +220,7 @@ public class AlipayChannel extends AbstractPayChannel {
         String requestData = JSON.toJSONString(params);
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 RefundResponse response = buildRefundResponse(request);
                 saveChannelLog(null, request.getOrderNo(), "REFUND",
                         config.getGatewayUrl(), requestData, JSON.toJSONString(response),
@@ -289,7 +290,7 @@ public class AlipayChannel extends AbstractPayChannel {
         String requestData = JSON.toJSONString(params);
 
         try {
-            if (config.getSandboxMode() == 1) {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
                 QueryRefundResponse response = buildQueryRefundResponse(refundNo, channelRefundNo, null);
                 saveChannelLog(null, null, "QUERY_REFUND",
                         config.getGatewayUrl(), requestData, JSON.toJSONString(response),
@@ -380,7 +381,7 @@ public class AlipayChannel extends AbstractPayChannel {
 
     @Override
     public boolean verifyNotify(Map<String, String> params) {
-        if (channelProperties.getAlipay().getSandboxMode() == 1) {
+        if (SandboxContext.isSandboxMode() || channelProperties.getAlipay().getSandboxMode() == 1) {
             return super.verifyNotify(params);
         }
         return SignUtil.alipayVerify(params, channelProperties.getAlipay().getAlipayPublicKey());

@@ -1,5 +1,6 @@
 package com.payhub.common.interceptor;
 
+import com.payhub.common.context.SandboxContext;
 import com.payhub.common.crypto.SignKeyProvider;
 import com.payhub.common.crypto.SignUtil;
 import com.payhub.common.exception.BusinessException;
@@ -30,6 +31,7 @@ public class SignInterceptor implements HandlerInterceptor {
     private static final String HEADER_SIGN_TYPE = "X-Sign-Type";
     private static final int DEFAULT_EXPIRE_SECONDS = 300;
     private static final String NONCE_KEY_PREFIX = "payhub:nonce:";
+    private static final String SANDBOX_SIGN_KEY = "sandbox_test_sign_key_2024";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final SignKeyProvider signKeyProvider;
@@ -56,30 +58,48 @@ public class SignInterceptor implements HandlerInterceptor {
             throw new BusinessException(ResultCode.PARAM_ERROR, "时间戳格式错误");
         }
 
-        if (!SignUtil.checkTimestamp(timestamp, DEFAULT_EXPIRE_SECONDS)) {
-            log.warn("请求已过期, timestamp: {}, merchantNo: {}", timestamp, merchantNo);
-            throw new BusinessException(ResultCode.SIGN_TIMEOUT);
-        }
+        if (!SandboxContext.isSandboxMode()) {
+            if (!SignUtil.checkTimestamp(timestamp, DEFAULT_EXPIRE_SECONDS)) {
+                log.warn("请求已过期, timestamp: {}, merchantNo: {}", timestamp, merchantNo);
+                throw new BusinessException(ResultCode.SIGN_TIMEOUT);
+            }
 
-        String nonceKey = NONCE_KEY_PREFIX + merchantNo + ":" + nonce;
-        Boolean nonceExists = stringRedisTemplate.hasKey(nonceKey);
-        if (Boolean.TRUE.equals(nonceExists)) {
-            log.warn("重复请求, nonce: {}, merchantNo: {}", nonce, merchantNo);
-            throw new BusinessException(ResultCode.SIGN_NONCE_REPEAT);
+            String nonceKey = NONCE_KEY_PREFIX + merchantNo + ":" + nonce;
+            Boolean nonceExists = stringRedisTemplate.hasKey(nonceKey);
+            if (Boolean.TRUE.equals(nonceExists)) {
+                log.warn("重复请求, nonce: {}, merchantNo: {}", nonce, merchantNo);
+                throw new BusinessException(ResultCode.SIGN_NONCE_REPEAT);
+            }
+        } else {
+            if (!SignUtil.checkTimestamp(timestamp, DEFAULT_EXPIRE_SECONDS * 12)) {
+                log.warn("沙箱请求已过期, timestamp: {}, merchantNo: {}", timestamp, merchantNo);
+                throw new BusinessException(ResultCode.SIGN_TIMEOUT);
+            }
+            log.info("沙箱模式签名校验, merchantNo: {}, 跳过nonce去重检查", merchantNo);
         }
 
         Map<String, Object> signParams = buildSignParams(request, merchantNo, timestamp, nonce, signType);
-        String signKey = getMerchantSignKey(merchantNo, signType);
+        String signKey = getSignKey(merchantNo, signType);
 
         if (!SignUtil.verifySign(signParams, signType, sign, signKey)) {
             log.warn("签名验证失败, merchantNo: {}, signType: {}, params: {}", merchantNo, signType, signParams);
             throw new BusinessException(ResultCode.SIGN_ERROR);
         }
 
-        stringRedisTemplate.opsForValue().set(nonceKey, "1", Duration.ofSeconds(DEFAULT_EXPIRE_SECONDS));
+        if (!SandboxContext.isSandboxMode()) {
+            stringRedisTemplate.opsForValue().set(NONCE_KEY_PREFIX + merchantNo + ":" + nonce, "1", Duration.ofSeconds(DEFAULT_EXPIRE_SECONDS));
+        }
 
         request.setAttribute("currentMerchantNo", merchantNo);
         return true;
+    }
+
+    private String getSignKey(String merchantNo, String signType) {
+        if (SandboxContext.isSandboxMode()) {
+            log.info("沙箱模式使用测试签名密钥, merchantNo: {}", merchantNo);
+            return SANDBOX_SIGN_KEY;
+        }
+        return signKeyProvider.getSignKey(merchantNo, signType);
     }
 
     private Map<String, Object> buildSignParams(HttpServletRequest request, String merchantNo, Long timestamp,
@@ -108,9 +128,5 @@ public class SignInterceptor implements HandlerInterceptor {
         params.put(HEADER_SIGN_TYPE, signType);
 
         return params;
-    }
-
-    private String getMerchantSignKey(String merchantNo, String signType) {
-        return signKeyProvider.getSignKey(merchantNo, signType);
     }
 }

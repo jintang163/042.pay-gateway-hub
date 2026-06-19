@@ -27,6 +27,7 @@ public class SandboxModeAspect {
         }
 
         boolean originalSandbox = SandboxContext.isSandboxMode();
+        String originalScene = SandboxContext.getScene();
         try {
             if (sandboxMode != null) {
                 SandboxContext.setSandboxMode(sandboxMode.value());
@@ -35,6 +36,11 @@ public class SandboxModeAspect {
             return joinPoint.proceed();
         } finally {
             SandboxContext.setSandboxMode(originalSandbox);
+            if (originalScene != null) {
+                SandboxContext.setScene(originalScene);
+            } else {
+                SandboxContext.setScene(null);
+            }
         }
     }
 }

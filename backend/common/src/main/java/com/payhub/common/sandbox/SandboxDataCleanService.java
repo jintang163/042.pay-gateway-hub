@@ -1,10 +1,8 @@
 package com.payhub.common.sandbox;
 
-import com.payhub.common.config.DynamicDataSource;
 import com.payhub.common.context.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,14 +27,13 @@ public class SandboxDataCleanService {
     );
 
     @Autowired
-    @Qualifier("sandboxDataSource")
-    private DataSource sandboxDataSource;
+    private DataSource dynamicDataSource;
 
     public void cleanAllSandboxData() {
         log.info("开始清理沙箱数据库数据，清理时间: {}", LocalDateTime.now());
         SandboxContext.setSandboxMode(true);
         try {
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(sandboxDataSource);
+            JdbcTemplate jdbcTemplate = new JdbcTemplate(dynamicDataSource);
             for (String table : CLEAN_TABLES) {
                 try {
                     jdbcTemplate.execute("TRUNCATE TABLE " + table);
@@ -55,7 +52,7 @@ public class SandboxDataCleanService {
         log.info("开始清理沙箱数据库过期数据（保留{}天），清理时间: {}", daysToKeep, LocalDateTime.now());
         SandboxContext.setSandboxMode(true);
         try {
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(sandboxDataSource);
+            JdbcTemplate jdbcTemplate = new JdbcTemplate(dynamicDataSource);
             String sql = "DELETE FROM ";
             String where = " WHERE created_at < DATE_SUB(NOW(), INTERVAL " + daysToKeep + " DAY)";
 
