@@ -46,3 +46,58 @@ export interface OrderDetail extends Order {
   fee?: number;
   settlementAmount?: number;
 }
+
+export interface FailReasonVO {
+  code: string;
+  message: string;
+  category: 'BALANCE' | 'RISK' | 'CHANNEL' | 'SIGN' | 'PARAM' | 'MERCHANT' | 'USER' | 'SYSTEM' | 'OTHER';
+  suggestion: string;
+  ruleDescription: string;
+  priority: number;
+}
+
+export interface OrderAttributionVO {
+  orderNo: string;
+  failCode?: string;
+  failMessage?: string;
+  failCategory?: string;
+  suggestion?: string;
+  ruleDescription?: string;
+  priority?: number;
+  evidence?: string[];
+  orderInfo?: {
+    orderNo: string;
+    merchantNo: string;
+    merchantOrderNo?: string;
+    payAmount: number;
+    payChannel: string;
+    payType: string;
+    payStatus: number;
+    expireTime?: string;
+    createdAt?: string;
+  };
+  latestChannelLog?: {
+    id?: number;
+    orderNo?: string;
+    channelCode?: string;
+    requestType?: string;
+    requestUrl?: string;
+    requestData?: string;
+    responseData?: string;
+    errorMsg?: string;
+    costTime?: number;
+    createTime?: string;
+  };
+  latestRiskLog?: {
+    id?: number;
+    merchantNo?: string;
+    orderNo?: string;
+    riskType?: string;
+    riskLevel?: string;
+    riskRule?: string;
+    riskDesc?: string;
+    handleResult?: number;
+    handleDesc?: string;
+    triggerTime?: string;
+  };
+}

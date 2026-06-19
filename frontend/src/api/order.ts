@@ -1,5 +1,5 @@
 import { request } from '@/utils/request';
-import type { Order, OrderQueryParams, OrderListResult, OrderDetail } from '@/types/order';
+import type { Order, OrderQueryParams, OrderListResult, OrderDetail, OrderAttributionVO } from '@/types/order';
 
 export const orderApi = {
   list: (params: OrderQueryParams) => {
@@ -8,6 +8,10 @@ export const orderApi = {
 
   detail: (orderNo: string) => {
     return request.get<OrderDetail>(`/api/pay/order/${orderNo}`);
+  },
+
+  attribution: (orderNo: string) => {
+    return request.get<OrderAttributionVO>(`/api/pay/order/${orderNo}/attribution`);
   },
 
   query: (data: { orderNo?: string; outTradeNo?: string }) => {

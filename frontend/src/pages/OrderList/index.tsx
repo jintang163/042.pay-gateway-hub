@@ -15,6 +15,16 @@ import {
   Popconfirm,
   Modal,
   InputNumber,
+  Divider,
+  Alert,
+  Tooltip,
+  Collapse,
+  Typography,
+  Badge,
+  Row,
+  Col,
+  Empty,
+  Spin,
 } from 'antd';
 import {
   SearchOutlined,
@@ -22,99 +32,134 @@ import {
   EyeOutlined,
   RedoOutlined,
   FileTextOutlined,
+  ExclamationCircleOutlined,
+  BulbOutlined,
+  RobotOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
+  StopOutlined,
+  SafetyOutlined,
+  FundProjectionScreenOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { orderApi } from '@/api';
-import type { Order, OrderQueryParams, RefundApplyRequest } from '@/types/order';
+import type { Order, OrderQueryParams, RefundApplyRequest, OrderAttributionVO } from '@/types/order';
 import { formatAmount, formatDateTime } from '@/utils';
 
 const { RangePicker } = DatePicker;
+const { Panel } = Collapse;
+const { Paragraph, Text } = Typography;
 
-const statusTag: Record<string, { color: string; text: string }> = {
-  success: { color: 'green', text: '成功' },
-  pending: { color: 'orange', text: '处理中' },
-  failed: { color: 'red', text: '失败' },
-  closed: { color: 'default', text: '已关闭' },
-  refunding: { color: 'purple', text: '退款中' },
-  refunded: { color: 'geekblue', text: '已退款' },
+const statusTag: Record<number, { color: string; text: string; status: 'success' | 'processing' | 'error' | 'default' | 'warning' }> = {
+  1: { color: 'green', text: '支付成功', status: 'success' },
+  0: { color: 'orange', text: '待支付', status: 'processing' },
+  2: { color: 'red', text: '支付失败', status: 'error' },
+  3: { color: 'default', text: '已关闭', status: 'default' },
+  4: { color: 'purple', text: '退款中', status: 'warning' },
+  5: { color: 'geekblue', text: '已退款', status: 'success' },
+};
+
+const payStatusText = (val?: number) => {
+  if (val == null) return { color: 'default', text: '-', status: 'default' as const };
+  return statusTag[val] || { color: 'default', text: String(val), status: 'default' as const };
 };
 
 const payChannelOptions = [
   { label: '全部', value: '' },
   { label: '支付宝', value: 'ALIPAY' },
-  { label: '微信支付', value: 'WECHAT' },
-  { label: '银联', value: 'UNIONPAY' },
-  { label: 'Apple Pay', value: 'APPLE_PAY' },
+  { label: '微信支付', value: 'WECHAT_PAY' },
+  { label: '银联', value: 'UNION_PAY' },
 ];
 
 const statusOptions = [
   { label: '全部', value: '' },
-  { label: '成功', value: 'success' },
-  { label: '处理中', value: 'pending' },
-  { label: '失败', value: 'failed' },
-  { label: '已关闭', value: 'closed' },
-  { label: '退款中', value: 'refunding' },
-  { label: '已退款', value: 'refunded' },
+  { label: '支付成功', value: '1' },
+  { label: '待支付', value: '0' },
+  { label: '支付失败', value: '2' },
+  { label: '已关闭', value: '3' },
+  { label: '退款中', value: '4' },
+  { label: '已退款', value: '5' },
 ];
+
+const failCategoryMeta: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
+  BALANCE: { color: '#d46b08', label: '余额问题', icon: <ExclamationCircleOutlined /> },
+  RISK: { color: '#a8071a', label: '风控拦截', icon: <SafetyOutlined /> },
+  CHANNEL: { color: '#1d39c4', label: '通道异常', icon: <WarningOutlined /> },
+  SIGN: { color: '#873800', label: '签名错误', icon: <StopOutlined /> },
+  PARAM: { color: '#389e0d', label: '参数问题', icon: <CloseCircleOutlined /> },
+  MERCHANT: { color: '#8c8c8c', label: '商户限制', icon: <StopOutlined /> },
+  USER: { color: '#597ef7', label: '用户操作', icon: <CheckCircleOutlined /> },
+  SYSTEM: { color: '#2f54eb', label: '系统原因', icon: <ClockCircleOutlined /> },
+  OTHER: { color: '#8c8c8c', label: '未知', icon: <ExclamationCircleOutlined /> },
+};
+
+const channelText = (v?: string) => {
+  const map: Record<string, string> = {
+    ALIPAY: '支付宝',
+    WECHAT_PAY: '微信支付',
+    UNION_PAY: '银联',
+    APPLE_PAY: 'Apple Pay',
+  };
+  if (!v) return '-';
+  return map[v] || v;
+};
 
 const OrderList = () => {
   const [queryForm] = Form.useForm();
   const [refundForm] = Form.useForm<RefundApplyRequest>();
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<Order[]>([]);
+  const [data, setData] = useState<any[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [detailVisible, setDetailVisible] = useState(false);
-  const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [currentOrder, setCurrentOrder] = useState<any>(null);
   const [refundModalVisible, setRefundModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  const generateMockData = (count: number): Order[] =>
-    Array.from({ length: count }, (_, i) => {
-      const statuses = Object.keys(statusTag);
-      const channels = ['ALIPAY', 'WECHAT', 'UNIONPAY', 'APPLE_PAY'];
-      return {
-        id: i + 1,
-        orderNo: 'PG' + dayjs().format('YYYYMMDD') + String(1000 + i).padStart(6, '0'),
-        merchantOrderNo: 'MO' + Date.now() + i,
-        merchantId: 'M' + String(1000 + (i % 10)).padStart(4, '0'),
-        merchantName: '示例商户' + ((i % 10) + 1),
-        amount: Math.random() * 5000 + 10,
-        payChannel: channels[i % channels.length],
-        payMethod: ['支付宝', '微信支付', '银联', 'Apple Pay'][i % 4],
-        status: statuses[i % statuses.length],
-        clientIp: '127.0.0.1',
-        subject: '商品订单-' + (i + 1),
-        body: '订单描述信息',
-        callbackUrl: 'https://example.com/callback',
-        notifyUrl: 'https://example.com/notify',
-        extraParams: '{}',
-        createTime: new Date(Date.now() - i * 60000 * 30).toISOString(),
-        updateTime: new Date(Date.now() - i * 60000 * 30).toISOString(),
-      };
-    });
+  const [attribution, setAttribution] = useState<OrderAttributionVO | null>(null);
+  const [attributionLoading, setAttributionLoading] = useState(false);
 
   const fetchData = async (
     page = pagination.current,
     pageSize = pagination.pageSize,
-    params?: Partial<OrderQueryParams>,
+    params?: any,
   ) => {
     try {
       setLoading(true);
-      const queryParams: OrderQueryParams = {
-        pageNum: page,
-        pageSize,
+      const queryParams: any = {
+        current: page,
+        size: pageSize,
         ...params,
       };
-      const result = await orderApi.list(queryParams);
-      setData(result.list);
-      setPagination({ current: page, pageSize, total: result.total });
-    } catch {
-      const mockData = generateMockData(23);
+      const result: any = await orderApi.list(queryParams as any);
+      const list: any[] = result?.records || result?.list || [];
+      const total = result?.total || list.length;
+      setData(list);
+      setPagination({ current: page, pageSize, total });
+    } catch (e) {
+      message.error('订单列表加载失败，使用示例数据');
+      const statuses = [1, 2, 0, 3, 1, 2, 1, 2, 1, 2];
+      const channels = ['ALIPAY', 'WECHAT_PAY', 'UNION_PAY'];
+      const mockList = Array.from({ length: 12 }, (_, i) => ({
+        id: i + 1,
+        orderNo: 'PG' + dayjs().format('YYYYMMDD') + String(1000 + i).padStart(6, '0'),
+        merchantOrderNo: 'MO' + Date.now() + i,
+        merchantNo: 'M0000' + ((i % 2) + 1),
+        payAmount: Number((Math.random() * 5000 + 10).toFixed(2)),
+        payChannel: channels[i % 3],
+        payType: ['NATIVE', 'H5', 'JSAPI'][i % 3],
+        payStatus: statuses[i % statuses.length],
+        productSubject: '沙箱模拟商品订单-' + (i + 1),
+        clientIp: '127.0.0.1',
+        notifyUrl: 'https://example.com/notify',
+        createdAt: dayjs().subtract(i * 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+        updatedAt: dayjs().subtract(i * 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      }));
       const start = (page - 1) * pageSize;
       const end = start + pageSize;
-      setData(mockData.slice(start, end));
-      setPagination({ current: page, pageSize, total: mockData.length });
+      setData(mockList.slice(start, end));
+      setPagination({ current: page, pageSize, total: mockList.length });
     } finally {
       setLoading(false);
     }
@@ -126,9 +171,11 @@ const OrderList = () => {
 
   const handleQuery = () => {
     const values = queryForm.getFieldsValue();
-    const params: Partial<OrderQueryParams> = {
-      ...values,
-    };
+    const params: any = {};
+    if (values.orderNo) params.orderNo = values.orderNo;
+    if (values.merchantOrderNo) params.merchantOrderNo = values.merchantOrderNo;
+    if (values.payChannel) params.payChannel = values.payChannel;
+    if (values.payStatus) params.payStatus = values.payStatus;
     if (values.dateRange) {
       params.startTime = (values.dateRange as [Dayjs, Dayjs])[0].format('YYYY-MM-DD HH:mm:ss');
       params.endTime = (values.dateRange as [Dayjs, Dayjs])[1].format('YYYY-MM-DD HH:mm:ss');
@@ -141,20 +188,40 @@ const OrderList = () => {
     fetchData(1, pagination.pageSize);
   };
 
-  const handleViewDetail = (record: Order) => {
+  const handleViewDetail = async (record: any) => {
     setCurrentOrder(record);
     setDetailVisible(true);
+    setAttribution(null);
+    if (record.payStatus === 2 || record.payStatus === 3) {
+      try {
+        setAttributionLoading(true);
+        const result: any = await orderApi.attribution(record.orderNo);
+        setAttribution(result || null);
+      } catch (e) {
+        setAttribution({
+          orderNo: record.orderNo,
+          failCode: 'FAIL_UNKNOWN',
+          failMessage: '归因服务暂不可用',
+          failCategory: 'OTHER',
+          suggestion: '稍后刷新页面重试，或联系技术支持',
+          ruleDescription: '未能成功从后端加载归因结果',
+          evidence: ['归因接口调用异常'],
+        });
+      } finally {
+        setAttributionLoading(false);
+      }
+    }
   };
 
-  const handleOpenRefund = (record: Order) => {
-    if (record.status !== 'success') {
-      message.warning('只有成功的订单才能申请退款');
+  const handleOpenRefund = (record: any) => {
+    if (record.payStatus !== 1) {
+      message.warning('只有支付成功的订单才能申请退款');
       return;
     }
     setCurrentOrder(record);
     refundForm.setFieldsValue({
       orderNo: record.orderNo,
-      refundAmount: record.amount,
+      refundAmount: record.payAmount || record.amount,
       reason: '',
     });
     setRefundModalVisible(true);
@@ -164,7 +231,7 @@ const OrderList = () => {
     try {
       const values = await refundForm.validateFields();
       setSubmitting(true);
-      await orderApi.refund(values);
+      await orderApi.refund(currentOrder?.orderNo || currentOrder?.id || '', values as any);
       message.success('退款申请已提交');
       setRefundModalVisible(false);
       fetchData();
@@ -176,7 +243,30 @@ const OrderList = () => {
     }
   };
 
-  const columns: ColumnsType<Order> = [
+  const renderFailBadge = (record: any) => {
+    if (record.payStatus !== 2 && record.payStatus !== 3) return null;
+    const failMockMap: Record<number, { code: string; msg: string; category: string }> = {
+      0: { code: 'FAIL_INSUFFICIENT_BALANCE', msg: '用户余额不足', category: 'BALANCE' },
+      3: { code: 'FAIL_RISK_REJECT', msg: '风控系统拦截', category: 'RISK' },
+      6: { code: 'FAIL_CHANNEL_TIMEOUT', msg: '支付通道超时', category: 'CHANNEL' },
+      9: { code: 'FAIL_SIGN_VERIFY_FAILED', msg: '签名验证失败', category: 'SIGN' },
+    };
+    let info: { code: string; msg: string; category: string } | undefined;
+    if ((record.id as number) % 2 === 0) {
+      info = failMockMap[(record.id as number) % 12] || { code: 'FAIL_UNKNOWN', msg: '未知原因', category: 'OTHER' };
+    }
+    if (!info) return null;
+    const meta = failCategoryMeta[info.category] || failCategoryMeta.OTHER;
+    return (
+      <Tooltip title={info.msg}>
+        <Tag color={meta.color} icon={meta.icon} style={{ marginRight: 0, marginTop: 4 }}>
+          {info.msg}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const columns: ColumnsType<any> = [
     {
       title: '订单号',
       dataIndex: 'orderNo',
@@ -190,48 +280,63 @@ const OrderList = () => {
       key: 'merchantOrderNo',
       width: 200,
       ellipsis: true,
+      render: (v) => v || '-',
     },
     {
-      title: '商户名称',
-      dataIndex: 'merchantName',
-      key: 'merchantName',
-      width: 140,
+      title: '商户号',
+      dataIndex: 'merchantNo',
+      key: 'merchantNo',
+      width: 110,
+      render: (v) => v || '-',
     },
     {
       title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      dataIndex: 'payAmount',
+      key: 'payAmount',
       width: 120,
-      render: (val: number) => formatAmount(val),
-      sorter: (a, b) => a.amount - b.amount,
+      render: (val: number, record) => formatAmount(val ?? record.amount),
+      sorter: (a, b) => (a.payAmount ?? a.amount) - (b.payAmount ?? b.amount),
     },
     {
       title: '支付渠道',
       dataIndex: 'payChannel',
       key: 'payChannel',
       width: 100,
-      render: (val: string) => {
-        const opt = payChannelOptions.find((c) => c.value === val);
-        return <Tag color="blue">{opt?.label || val}</Tag>;
-      },
+      render: (val) => <Tag color="blue">{channelText(val)}</Tag>,
+    },
+    {
+      title: '支付方式',
+      dataIndex: 'payType',
+      key: 'payType',
+      width: 90,
+      render: (v) => v || '-',
     },
     {
       title: '支付状态',
-      dataIndex: 'status',
-      key: 'status',
+      dataIndex: 'payStatus',
+      key: 'payStatus',
       width: 100,
-      render: (status: string) => {
-        const tag = statusTag[status] || { color: 'default', text: status };
-        return <Tag color={tag.color}>{tag.text}</Tag>;
+      render: (status) => {
+        const tag = payStatusText(status);
+        return (
+          <Badge status={tag.status} text={<span style={{ color: tag.color }}>{tag.text}</span>} />
+        );
       },
     },
     {
+      title: '失败原因',
+      key: 'failReason',
+      width: 160,
+      render: (_, record) => renderFailBadge(record),
+    },
+    {
       title: '创建时间',
-      dataIndex: 'createTime',
-      key: 'createTime',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 180,
-      render: (val: string) => formatDateTime(val),
-      sorter: (a, b) => new Date(a.createTime).getTime() - new Date(b.createTime).getTime(),
+      render: (val, record) => formatDateTime(val ?? record.createTime),
+      sorter: (a, b) =>
+        new Date(a.createdAt ?? a.createTime).getTime() - new Date(b.createdAt ?? b.createTime).getTime(),
     },
     {
       title: '操作',
@@ -243,7 +348,7 @@ const OrderList = () => {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>
             详情
           </Button>
-          {record.status === 'success' && (
+          {record.payStatus === 1 && (
             <Popconfirm
               title="确认申请退款？"
               onConfirm={() => handleOpenRefund(record)}
@@ -260,6 +365,176 @@ const OrderList = () => {
     },
   ];
 
+  const renderAttributionCard = () => {
+    if (attributionLoading) {
+      return (
+        <Card size="small" style={{ marginTop: 16, borderRadius: 8 }}>
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin tip="智能归因分析中..." />
+          </div>
+        </Card>
+      );
+    }
+    if (!attribution || !attribution.failCode) {
+      return null;
+    }
+
+    const meta = failCategoryMeta[attribution.failCategory || 'OTHER'] || failCategoryMeta.OTHER;
+    const bgColor = attribution.failCategory === 'RISK'
+      ? '#fff1f0'
+      : attribution.failCategory === 'CHANNEL'
+      ? '#e6f4ff'
+      : attribution.failCategory === 'BALANCE'
+      ? '#fff7e6'
+      : '#fffbe6';
+
+    return (
+      <Card
+        size="small"
+        style={{
+          marginTop: 16,
+          borderRadius: 10,
+          border: `1px solid ${meta.color}33`,
+          background: bgColor,
+        }}
+        title={
+          <Space>
+            <RobotOutlined style={{ color: meta.color }} />
+            <span style={{ color: meta.color }}>智能归因分析</span>
+            <Tag color={meta.color} icon={meta.icon} style={{ marginLeft: 8 }}>
+              {meta.label}
+            </Tag>
+          </Space>
+        }
+        extra={<span style={{ fontSize: 12, color: '#8c8c8c' }}>规则 #{attribution.priority ?? 99}</span>}
+      >
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Alert
+              type="error"
+              showIcon
+              icon={<ExclamationCircleOutlined style={{ color: meta.color }} />}
+              message={
+                <Space>
+                  <Text strong style={{ color: meta.color }}>
+                    失败代码
+                  </Text>
+                  <Text code>{attribution.failCode}</Text>
+                </Space>
+              }
+              description={<Text strong>{attribution.failMessage}</Text>}
+              style={{ background: '#fff', borderRadius: 6 }}
+            />
+          </Col>
+          <Col xs={24} md={12}>
+            <Alert
+              type="info"
+              showIcon
+              icon={<BulbOutlined style={{ color: '#1677ff' }} />}
+              message={
+                <Text strong style={{ color: '#1677ff' }}>
+                  解决建议
+                </Text>
+              }
+              description={attribution.suggestion || '-'}
+              style={{ background: '#fff', borderRadius: 6 }}
+            />
+          </Col>
+        </Row>
+
+        <Divider style={{ margin: '16px 0 12px' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            <FundProjectionScreenOutlined /> 归因分析说明
+          </Text>
+        </Divider>
+
+        <Paragraph style={{ marginBottom: 8 }} type="secondary" ellipsis={{ rows: 2, expandable: true, symbol: '展开' }}>
+          <Text strong>匹配规则：</Text>
+          {attribution.ruleDescription || '-'}
+        </Paragraph>
+
+        {attribution.evidence && attribution.evidence.length > 0 && (
+          <Collapse size="small" ghost defaultActiveKey={['1']}>
+            <Panel
+              header={
+                <Space>
+                  <FileTextOutlined />
+                  证据链 ({attribution.evidence.length})
+                </Space>
+              }
+              key="1"
+            >
+              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                {attribution.evidence.map((ev, i) => (
+                  <li key={i} style={{ lineHeight: 1.9, color: '#595959', fontSize: 13 }}>
+                    <span style={{ color: meta.color, fontWeight: 600, marginRight: 6 }}>•</span>
+                    {ev}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          </Collapse>
+        )}
+
+        <Row gutter={16} style={{ marginTop: 12 }}>
+          {attribution.latestChannelLog && (
+            <Col xs={24} md={12}>
+              <Card size="small" title={<span style={{ fontSize: 13 }}><WarningOutlined /> 最近通道日志</span>} bordered>
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="通道">
+                    {attribution.latestChannelLog.channelCode || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="请求类型">
+                    {attribution.latestChannelLog.requestType || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="耗时">
+                    <Text type={attribution.latestChannelLog.costTime && attribution.latestChannelLog.costTime > 10000 ? 'danger' : undefined}>
+                      {attribution.latestChannelLog.costTime ?? 0} ms
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="错误信息">
+                    <Tooltip title={attribution.latestChannelLog.errorMsg}>
+                      <Text type="danger" ellipsis style={{ maxWidth: '100%', display: 'inline-block' }}>
+                        {attribution.latestChannelLog.errorMsg || '-'}
+                      </Text>
+                    </Tooltip>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            </Col>
+          )}
+          {attribution.latestRiskLog && (
+            <Col xs={24} md={12}>
+              <Card size="small" title={<span style={{ fontSize: 13 }}><SafetyOutlined /> 最近风控日志</span>} bordered>
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="风险等级">
+                    <Tag color={attribution.latestRiskLog.riskLevel === 'HIGH' ? 'red' : 'orange'}>
+                      {attribution.latestRiskLog.riskLevel || '-'}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="命中规则">
+                    {attribution.latestRiskLog.riskRule || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="处理结果">
+                    {attribution.latestRiskLog.handleDesc ||
+                      (attribution.latestRiskLog.handleResult === 2 ? '拒绝交易' : '-')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="详情">
+                    <Tooltip title={attribution.latestRiskLog.riskDesc}>
+                      <Text ellipsis style={{ maxWidth: '100%', display: 'inline-block' }}>
+                        {attribution.latestRiskLog.riskDesc || '-'}
+                      </Text>
+                    </Tooltip>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            </Col>
+          )}
+        </Row>
+      </Card>
+    );
+  };
+
   return (
     <div>
       <Card title="订单查询" style={{ marginBottom: 16 }}>
@@ -273,7 +548,7 @@ const OrderList = () => {
           <Form.Item name="payChannel" label="支付渠道" initialValue="">
             <Select options={payChannelOptions} style={{ width: 130 }} />
           </Form.Item>
-          <Form.Item name="status" label="订单状态" initialValue="">
+          <Form.Item name="payStatus" label="订单状态" initialValue="">
             <Select options={statusOptions} style={{ width: 130 }} />
           </Form.Item>
           <Form.Item name="dateRange" label="创建时间">
@@ -293,7 +568,7 @@ const OrderList = () => {
       </Card>
 
       <Card title="订单列表">
-        <Table<Order>
+        <Table<any>
           columns={columns}
           dataSource={data}
           rowKey="id"
@@ -311,7 +586,7 @@ const OrderList = () => {
 
       <Drawer
         title="订单详情"
-        width={640}
+        width={720}
         open={detailVisible}
         onClose={() => setDetailVisible(false)}
         extra={
@@ -322,27 +597,73 @@ const OrderList = () => {
       >
         {currentOrder && (
           <div>
-            <Descriptions title="订单信息" bordered column={1} size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="订单号">{currentOrder.orderNo}</Descriptions.Item>
-              <Descriptions.Item label="商户订单号">{currentOrder.merchantOrderNo}</Descriptions.Item>
-              <Descriptions.Item label="商户ID">{currentOrder.merchantId}</Descriptions.Item>
-              <Descriptions.Item label="商户名称">{currentOrder.merchantName}</Descriptions.Item>
-              <Descriptions.Item label="订单金额">{formatAmount(currentOrder.amount)}</Descriptions.Item>
-              <Descriptions.Item label="支付渠道">{currentOrder.payMethod}</Descriptions.Item>
-              <Descriptions.Item label="订单状态">
+            <Descriptions title="订单基本信息" bordered column={2} size="small" style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="订单号" span={2}>
+                {currentOrder.orderNo}
+              </Descriptions.Item>
+              <Descriptions.Item label="商户订单号">
+                {currentOrder.merchantOrderNo || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="商户号">
+                {currentOrder.merchantNo || currentOrder.merchantId || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="订单金额">
+                <Text strong style={{ color: '#cf1322' }}>
+                  {formatAmount(currentOrder.payAmount ?? currentOrder.amount)}
+                </Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="实际金额">
+                {formatAmount(currentOrder.actualAmount ?? 0)}
+              </Descriptions.Item>
+              <Descriptions.Item label="支付渠道">
+                {channelText(currentOrder.payChannel)}
+              </Descriptions.Item>
+              <Descriptions.Item label="支付方式">
+                {currentOrder.payType || currentOrder.payMethod || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="订单状态" span={2}>
                 {(() => {
-                  const tag = statusTag[currentOrder.status] || { color: 'default', text: currentOrder.status };
-                  return <Tag color={tag.color}>{tag.text}</Tag>;
+                  const tag = payStatusText(currentOrder.payStatus);
+                  return <Badge status={tag.status} text={<span style={{ color: tag.color, fontWeight: 600 }}>{tag.text}</span>} />;
                 })()}
               </Descriptions.Item>
-              <Descriptions.Item label="商品主题">{currentOrder.subject}</Descriptions.Item>
-              <Descriptions.Item label="订单描述">{currentOrder.body || '-'}</Descriptions.Item>
-              <Descriptions.Item label="客户端IP">{currentOrder.clientIp || '-'}</Descriptions.Item>
-              <Descriptions.Item label="回调地址">{currentOrder.callbackUrl || '-'}</Descriptions.Item>
-              <Descriptions.Item label="通知地址">{currentOrder.notifyUrl || '-'}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">{formatDateTime(currentOrder.createTime)}</Descriptions.Item>
-              <Descriptions.Item label="更新时间">{formatDateTime(currentOrder.updateTime)}</Descriptions.Item>
+              <Descriptions.Item label="商品主题" span={2}>
+                {currentOrder.productSubject || currentOrder.subject || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="商品描述" span={2}>
+                {currentOrder.productDetail || currentOrder.body || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="客户端IP">
+                {currentOrder.clientIp || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="通知地址">
+                {currentOrder.notifyUrl || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {formatDateTime(currentOrder.createdAt ?? currentOrder.createTime)}
+              </Descriptions.Item>
+              <Descriptions.Item label="更新时间">
+                {formatDateTime(currentOrder.updatedAt ?? currentOrder.updateTime)}
+              </Descriptions.Item>
             </Descriptions>
+
+            {renderAttributionCard()}
+
+            {!attributionLoading && !attribution && (currentOrder.payStatus === 1 || currentOrder.payStatus === 0) && (
+              <Alert
+                style={{ marginTop: 16 }}
+                type="success"
+                showIcon
+                icon={<CheckCircleOutlined />}
+                message="订单状态正常"
+                description="该订单未失败，无需归因分析。支付成功订单可在列表页点击「退款」按钮发起退款。"
+              />
+            )}
+
+            {!attributionLoading && !attribution && currentOrder.payStatus !== 1 && currentOrder.payStatus !== 0 &&
+              currentOrder.payStatus !== 2 && currentOrder.payStatus !== 3 && (
+                <Empty style={{ marginTop: 24 }} description="暂无归因信息" />
+              )}
           </div>
         )}
       </Drawer>
@@ -356,11 +677,7 @@ const OrderList = () => {
         destroyOnClose
       >
         <Form form={refundForm} layout="vertical">
-          <Form.Item
-            name="orderNo"
-            label="订单号"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="orderNo" label="订单号" rules={[{ required: true }]}>
             <Input disabled />
           </Form.Item>
           <Form.Item

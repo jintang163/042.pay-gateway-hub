@@ -7,10 +7,12 @@ import com.payhub.pay.dto.OrderQueryResponse;
 import com.payhub.pay.dto.UnifiedOrderRequest;
 import com.payhub.pay.dto.UnifiedOrderResponse;
 import com.payhub.pay.dto.vo.ChannelDistributionVO;
+import com.payhub.pay.dto.vo.OrderAttributionVO;
 import com.payhub.pay.dto.vo.OverviewStatsVO;
 import com.payhub.pay.dto.vo.SuccessRateTrendVO;
 import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.service.DashboardService;
+import com.payhub.pay.service.OrderAttributionService;
 import com.payhub.pay.service.PayOrderService;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,9 @@ public class PayController {
 
     @Autowired
     private DashboardService dashboardService;
+
+    @Autowired
+    private OrderAttributionService orderAttributionService;
 
     @PostMapping("/unifiedorder")
     public Result<UnifiedOrderResponse> unifiedOrder(@Valid @RequestBody UnifiedOrderRequest request,
@@ -105,6 +110,13 @@ public class PayController {
         String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
         PayOrder order = payOrderService.getOrderDetail(orderNo, merchantNo);
         return Result.success(order);
+    }
+
+    @GetMapping("/order/{orderNo}/attribution")
+    public Result<OrderAttributionVO> orderAttribution(@PathVariable String orderNo, HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        OrderAttributionVO vo = orderAttributionService.analyzeFailReason(orderNo, merchantNo);
+        return Result.success(vo);
     }
 
     @GetMapping("/dashboard/overview")
