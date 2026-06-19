@@ -8,6 +8,8 @@ import com.payhub.channel.entity.PayChannelLog;
 import com.payhub.channel.enums.OrderStatusEnum;
 import com.payhub.channel.enums.PayTypeEnum;
 import com.payhub.channel.enums.RefundStatusEnum;
+import com.payhub.channel.sandbox.SandboxSceneSimulator;
+import com.payhub.common.context.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
@@ -45,6 +47,13 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
     }
 
     protected UnifiedOrderResponse buildUnifiedOrderResponse(UnifiedOrderRequest request) {
+        if (SandboxContext.isSandboxMode()) {
+            return SandboxSceneSimulator.simulateUnifiedOrder(request, () -> doBuildUnifiedOrderResponse(request));
+        }
+        return doBuildUnifiedOrderResponse(request);
+    }
+
+    private UnifiedOrderResponse doBuildUnifiedOrderResponse(UnifiedOrderRequest request) {
         String payType = request.getPayType();
         String channelTradeNo = generateChannelTradeNo();
         String payParams;
@@ -102,6 +111,14 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
     }
 
     protected QueryOrderResponse buildQueryOrderResponse(String orderNo, String channelTradeNo) {
+        if (SandboxContext.isSandboxMode()) {
+            return SandboxSceneSimulator.simulateQueryOrder(orderNo, channelTradeNo,
+                    () -> doBuildQueryOrderResponse(orderNo, channelTradeNo));
+        }
+        return doBuildQueryOrderResponse(orderNo, channelTradeNo);
+    }
+
+    private QueryOrderResponse doBuildQueryOrderResponse(String orderNo, String channelTradeNo) {
         LocalDateTime payTime = getPayTime(orderNo);
         log.info("[{}]沙箱查单成功, 订单号:{}, 通道交易号:{}, 状态:{}", getChannelCode(), orderNo, channelTradeNo, OrderStatusEnum.SUCCESS.getCode());
         return QueryOrderResponse.success(
@@ -113,6 +130,14 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
     }
 
     protected RefundResponse buildRefundResponse(RefundRequest request) {
+        if (SandboxContext.isSandboxMode()) {
+            return SandboxSceneSimulator.simulateRefund(request,
+                    () -> doBuildRefundResponse(request));
+        }
+        return doBuildRefundResponse(request);
+    }
+
+    private RefundResponse doBuildRefundResponse(RefundRequest request) {
         String channelRefundNo = generateChannelRefundNo();
         log.info("[{}]沙箱退款成功, 订单号:{}, 退款单号:{}, 通道退款号:{}", getChannelCode(), request.getOrderNo(), request.getRefundNo(), channelRefundNo);
         return RefundResponse.success(channelRefundNo, RefundStatusEnum.SUCCESS.getCode());
@@ -155,7 +180,11 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
         if (params == null || params.isEmpty()) {
             return false;
         }
-        log.info("[{}]沙箱模式，回调验签默认通过", getChannelCode());
+        if (SandboxContext.isSandboxMode()) {
+            boolean defaultResult = true;
+            log.info("[{}]沙箱模式，回调验签默认通过", getChannelCode());
+            return SandboxSceneSimulator.verifyNotifyInSandbox(defaultResult);
+        }
         return true;
     }
 

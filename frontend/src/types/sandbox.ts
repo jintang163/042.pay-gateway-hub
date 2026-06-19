@@ -6,9 +6,50 @@ export type SandboxScene =
   | 'success'
   | 'failed'
   | 'timeout'
+  | 'insufficient_balance'
   | 'repeat_notify'
   | 'sign_error'
-  | 'amount_mismatch';
+  | 'amount_mismatch'
+  | 'refund_success'
+  | 'refund_failed'
+  | 'channel_error';
+
+export interface SandboxTestResult {
+  success: boolean;
+  testId: string;
+  scene: SandboxScene;
+  orderNo: string;
+  requestTime: string;
+  responseTime: string;
+  duration: number;
+  requestParams: string;
+  responseData: string;
+  notifyResult?: {
+    notified: boolean;
+    notifyCount: number;
+    notifyUrl: string;
+    lastNotifyTime: string;
+  };
+  errorMessage?: string;
+}
+
+export interface SandboxSceneOption {
+  code: string;
+  name: string;
+  description?: string;
+}
+
+export interface SandboxMerchant {
+  id: string;
+  merchantName: string;
+  description?: string;
+}
+
+export interface SandboxPayMethod {
+  code: string;
+  name: string;
+  channels: { code: string; name: string }[];
+}
 
 export interface SandboxTest {
   id: string;
@@ -42,12 +83,12 @@ export interface SandboxQueryParams extends PageParams {
 export type SandboxListResult = PageResult<SandboxTest>;
 
 export interface SandboxExecuteRequest {
-  merchantId: string;
-  payMethod: string;
+  merchantNo: string;
+  testScene: string;
+  testName: string;
   payChannel: string;
-  testType: SandboxTest['testType'];
-  scene: SandboxScene;
-  testAmount?: number;
-  orderNo?: string;
-  extraParams?: Record<string, unknown>;
+  payType: string;
+  payAmount: number;
+  notifyUrl?: string;
+  extraParams?: string;
 }

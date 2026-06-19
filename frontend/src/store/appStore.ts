@@ -7,6 +7,7 @@ interface AppState {
   theme: 'light' | 'dark';
   tabs: TabItem[];
   activeTabKey: string;
+  sandboxMode: boolean;
 
   toggleCollapsed: () => void;
   setCollapsed: (collapsed: boolean) => void;
@@ -17,18 +18,22 @@ interface AppState {
   setActiveTab: (key: string) => void;
   clearTabs: () => void;
   closeOtherTabs: (key: string) => void;
+  toggleSandboxMode: () => void;
+  setSandboxMode: (enabled: boolean) => void;
 }
 
 const initialCollapsed = sessionStorage.get<boolean>('sidebar_collapsed', false);
 const initialTheme = sessionStorage.get<'light' | 'dark'>('app_theme', 'light');
 const initialTabs = sessionStorage.get<TabItem[]>('app_tabs', [{ key: '/dashboard', label: '仪表盘', closable: false }]);
 const initialActiveTab = sessionStorage.get<string>('active_tab', '/dashboard');
+const initialSandboxMode = sessionStorage.get<boolean>('sandbox_mode', false);
 
 export const useAppStore = create<AppState>((set, get) => ({
   collapsed: initialCollapsed,
   theme: initialTheme,
   tabs: initialTabs,
   activeTabKey: initialActiveTab,
+  sandboxMode: initialSandboxMode,
 
   toggleCollapsed: () => {
     const collapsed = !get().collapsed;
@@ -106,5 +111,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionStorage.set('active_tab', key);
       return { tabs: newTabs, activeTabKey: key };
     });
+  },
+
+  toggleSandboxMode: () => {
+    const sandboxMode = !get().sandboxMode;
+    sessionStorage.set('sandbox_mode', sandboxMode);
+    set({ sandboxMode });
+  },
+
+  setSandboxMode: (enabled: boolean) => {
+    sessionStorage.set('sandbox_mode', enabled);
+    set({ sandboxMode: enabled });
   },
 }));

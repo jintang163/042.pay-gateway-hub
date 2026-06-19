@@ -444,8 +444,23 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
 
             String body = JSON.toJSONString(notifyParams);
 
-            log.info("沙箱环境触发模拟异步通知, orderNo={}", order.getOrderNo());
-            this.handleNotify(order.getPayChannel(), notifyParams, body);
+            int notifyCount = 1;
+            if (com.payhub.channel.sandbox.SandboxSceneSimulator.shouldRepeatNotify()) {
+                notifyCount = 3;
+                log.info("沙箱场景：重复通知，将发送{}次通知", notifyCount);
+            }
+
+            for (int i = 0; i < notifyCount; i++) {
+                log.info("沙箱环境触发模拟异步通知, orderNo={}, 第{}次", order.getOrderNo(), i + 1);
+                try {
+                    this.handleNotify(order.getPayChannel(), notifyParams, body);
+                } catch (Exception e) {
+                    log.warn("沙箱模拟异步通知第{}次失败, orderNo={}", i + 1, order.getOrderNo(), e);
+                }
+                if (i < notifyCount - 1) {
+                    TimeUnit.SECONDS.sleep(2);
+                }
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("沙箱模拟异步通知被中断, orderNo={}", order.getOrderNo());

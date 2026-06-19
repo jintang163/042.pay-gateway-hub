@@ -1,29 +1,44 @@
 import { request } from '@/utils/request';
-import type { SandboxTest, SandboxQueryParams, SandboxListResult, SandboxExecuteRequest } from '@/types/sandbox';
+import type {
+  SandboxTest,
+  SandboxQueryParams,
+  SandboxListResult,
+  SandboxExecuteRequest,
+  SandboxSceneOption,
+  SandboxMerchant,
+  SandboxPayMethod,
+  SandboxTestResult,
+} from '@/types/sandbox';
 
 export const sandboxApi = {
-  list: (params: SandboxQueryParams) => {
-    return request.get<SandboxListResult>('/api/sandbox/test/list', params);
+  getStatus: () => {
+    return request.get<{ enabled: boolean; description: string; dataRetentionDays: number; cleanTime: string }>(
+      '/api/sandbox/status'
+    );
   },
 
-  detail: (id: string) => {
-    return request.get<SandboxTest>(`/api/sandbox/test/${id}`);
+  list: (params: SandboxQueryParams) => {
+    return request.get<SandboxListResult>('/api/sandbox/test/records', params);
+  },
+
+  detail: (testId: string) => {
+    return request.get<SandboxTestResult>(`/api/sandbox/test/records/${testId}`);
   },
 
   getScenes: () => {
-    return request.get<{ code: string; name: string; description?: string }[]>('/api/sandbox/test/scenes');
+    return request.get<SandboxSceneOption[]>('/api/sandbox/test/scenes');
   },
 
   execute: (data: SandboxExecuteRequest) => {
-    return request.post<{ testId: string; status: string; result?: unknown }>('/api/sandbox/test/execute', data);
+    return request.post<SandboxTestResult>('/api/sandbox/test', data);
   },
 
   getMerchants: () => {
-    return request.get<{ id: string; merchantName: string }[]>('/api/sandbox/merchants');
+    return request.get<SandboxMerchant[]>('/api/sandbox/merchants');
   },
 
   getPayMethods: () => {
-    return request.get<{ code: string; name: string; channels: { code: string; name: string }[] }[]>('/api/sandbox/pay-methods');
+    return request.get<SandboxPayMethod[]>('/api/sandbox/pay-methods');
   },
 
   clearHistory: () => {

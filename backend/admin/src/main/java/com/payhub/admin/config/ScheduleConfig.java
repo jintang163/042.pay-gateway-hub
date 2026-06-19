@@ -1,5 +1,6 @@
 package com.payhub.admin.config;
 
+import com.payhub.common.sandbox.SandboxDataCleanService;
 import com.payhub.pay.service.PayRefundService;
 import com.payhub.settlement.service.SettlementService;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,9 @@ public class ScheduleConfig {
 
     @Autowired
     private SettlementService settlementService;
+
+    @Autowired(required = false)
+    private SandboxDataCleanService sandboxDataCleanService;
 
     @Scheduled(cron = "0 */5 * * * ?")
     public void refundRetryTask() {
@@ -52,6 +56,21 @@ public class ScheduleConfig {
             log.info("定时任务：批量结算打款任务执行完成");
         } catch (Exception e) {
             log.error("定时任务：批量结算打款任务执行异常", e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 4 * * ?")
+    public void cleanSandboxDataTask() {
+        log.info("定时任务：开始执行沙箱数据清理任务");
+        try {
+            if (sandboxDataCleanService != null) {
+                sandboxDataCleanService.cleanAllSandboxData();
+                log.info("定时任务：沙箱数据清理任务执行完成");
+            } else {
+                log.info("定时任务：沙箱数据清理服务未启用，跳过");
+            }
+        } catch (Exception e) {
+            log.error("定时任务：沙箱数据清理任务执行异常", e);
         }
     }
 }

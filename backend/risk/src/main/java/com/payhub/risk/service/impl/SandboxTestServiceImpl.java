@@ -6,15 +6,24 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.payhub.common.annotation.SandboxMode;
+import com.payhub.common.context.SandboxContext;
+import com.payhub.common.enums.SandboxSceneEnum;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.IdGenerator;
+import com.payhub.common.utils.OrderNoGenerator;
+import com.payhub.pay.dto.UnifiedOrderRequest;
+import com.payhub.pay.dto.UnifiedOrderResponse;
+import com.payhub.pay.entity.PayOrder;
+import com.payhub.pay.service.PayOrderService;
 import com.payhub.risk.dto.SandboxTestRequest;
 import com.payhub.risk.dto.SandboxTestResultVO;
 import com.payhub.risk.entity.SandboxTestRecord;
 import com.payhub.risk.mapper.SandboxTestRecordMapper;
 import com.payhub.risk.service.SandboxTestService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,14 +36,11 @@ import java.util.Map;
 @Service
 public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper, SandboxTestRecord> implements SandboxTestService {
 
-    private static final String SCENE_SUCCESS = "SUCCESS";
-    private static final String SCENE_FAIL = "FAIL";
-    private static final String SCENE_TIMEOUT = "TIMEOUT";
-    private static final String SCENE_DUPLICATE_NOTIFY = "DUPLICATE_NOTIFY";
-    private static final String SCENE_SIGN_ERROR = "SIGN_ERROR";
-    private static final String SCENE_AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
+    @Autowired(required = false)
+    private PayOrderService payOrderService;
 
     @Override
+    @SandboxMode
     public SandboxTestResultVO executeTest(SandboxTestRequest request) {
         LocalDateTime startTime = LocalDateTime.now();
         String testId = IdGenerator.generateIdStr();
@@ -50,7 +56,12 @@ public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper,
         record.setTestParams(JSON.toJSONString(request));
         record.setStartTime(startTime);
 
-        Integer expectResult = getExpectResult(request.getTestScene());
+        SandboxSceneEnum sceneEnum = SandboxSceneEnum.getByCode(request.getTestScene());
+        SandboxContext.setScene(sceneEnum.getCode());
+
+        Integer expectResult = sceneEnum == SandboxSceneEnum.SUCCESS
+                || sceneEnum == SandboxSceneEnum.REPEAT_NOTIFY
+                || sceneEnum == SandboxSceneEnum.REFUND_SUCCESS ? 1 : 0;
         record.setExpectResult(expectResult);
 
         Map<String, Object> responseData = new HashMap<>();
@@ -59,56 +70,26 @@ public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper,
         String notifyResult = null;
 
         try {
-            Thread.sleep(getSimulateDelay(request.getTestScene()));
-
-            switch (request.getTestScene()) {
-                case SCENE_SUCCESS:
-                    actualResult = 1;
-                    responseData.put("code", 200);
-                    responseData.put("message", "success");
-                    responseData.put("orderNo", "SANDBOX_" + testId);
-                    responseData.put("payUrl", "https://sandbox.example.com/pay/" + testId);
-                    notifyResult = simulateNotify(request.getNotifyUrl(), true, false);
-                    break;
-                case SCENE_FAIL:
-                    actualResult = 0;
-                    responseData.put("code", 400);
-                    responseData.put("message", "支付失败");
-                    errorMsg = "模拟支付失败场景";
-                    break;
-                case SCENE_TIMEOUT:
-                    actualResult = 0;
-                    responseData.put("code", 504);
-                    responseData.put("message", "timeout");
-                    errorMsg = "模拟支付超时场景";
-                    break;
-                case SCENE_DUPLICATE_NOTIFY:
-                    actualResult = 1;
-                    responseData.put("code", 200);
-                    responseData.put("message", "success");
-                    responseData.put("orderNo", "SANDBOX_" + testId);
-                    notifyResult = simulateNotify(request.getNotifyUrl(), true, true);
-                    break;
-                case SCENE_SIGN_ERROR:
-                    actualResult = 0;
-                    responseData.put("code", 401);
-                    responseData.put("message", "sign error");
-                    errorMsg = "模拟签名错误场景";
-                    break;
-                case SCENE_AMOUNT_MISMATCH:
-                    actualResult = 0;
-                    responseData.put("code", 402);
-                    responseData.put("message", "amount mismatch");
-                    errorMsg = "模拟金额不匹配场景";
-                    break;
-                default:
-                    throw new BusinessException(ResultCode.PARAM_ERROR, "不支持的测试场景：" + request.getTestScene());
+            if (payOrderService != null && isPayTestScene(sceneEnum)) {
+                actualResult = executeRealPayTest(request, sceneEnum, responseData);
+                if (sceneEnum == SandboxSceneEnum.REPEAT_NOTIFY || sceneEnum == SandboxSceneEnum.SUCCESS) {
+                    notifyResult = "已触发模拟异步通知，场景: " + sceneEnum.getName();
+                }
+            } else {
+                actualResult = executeSimulatedTest(sceneEnum, responseData, request);
+                notifyResult = (sceneEnum == SandboxSceneEnum.SUCCESS || sceneEnum == SandboxSceneEnum.REPEAT_NOTIFY)
+                        ? "模拟通知已发送（演示模式）" : null;
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+
+            if (expectResult == 0 && actualResult == 0) {
+                errorMsg = sceneEnum.getDescription();
+            }
+        } catch (Exception e) {
             actualResult = 0;
-            errorMsg = "测试执行被中断";
-            log.error("沙箱测试被中断", e);
+            errorMsg = "测试执行异常: " + e.getMessage();
+            log.error("沙箱测试执行异常, testId={}, scene={}", testId, request.getTestScene(), e);
+        } finally {
+            SandboxContext.clear();
         }
 
         LocalDateTime endTime = LocalDateTime.now();
@@ -145,16 +126,125 @@ public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper,
                 .build();
     }
 
+    private boolean isPayTestScene(SandboxSceneEnum scene) {
+        return scene == SandboxSceneEnum.SUCCESS
+                || scene == SandboxSceneEnum.FAILED
+                || scene == SandboxSceneEnum.TIMEOUT
+                || scene == SandboxSceneEnum.INSUFFICIENT_BALANCE
+                || scene == SandboxSceneEnum.REPEAT_NOTIFY
+                || scene == SandboxSceneEnum.SIGN_ERROR
+                || scene == SandboxSceneEnum.AMOUNT_MISMATCH
+                || scene == SandboxSceneEnum.CHANNEL_ERROR;
+    }
+
+    private Integer executeRealPayTest(SandboxTestRequest request, SandboxSceneEnum sceneEnum,
+                                       Map<String, Object> responseData) {
+        try {
+            UnifiedOrderRequest orderRequest = new UnifiedOrderRequest();
+            orderRequest.setMerchantNo(request.getMerchantNo());
+            orderRequest.setMerchantOrderNo("SB" + System.currentTimeMillis());
+            orderRequest.setPayChannel(request.getPayChannel());
+            orderRequest.setPayType(request.getPayType());
+            orderRequest.setPayAmount(request.getPayAmount());
+            orderRequest.setProductSubject(request.getTestName());
+            orderRequest.setProductDetail("沙箱测试订单 - " + sceneEnum.getName());
+            orderRequest.setNotifyUrl(request.getNotifyUrl());
+            orderRequest.setClientIp("127.0.0.1");
+
+            UnifiedOrderResponse orderResponse = payOrderService.unifiedOrder(orderRequest);
+            responseData.put("orderNo", orderResponse.getOrderNo());
+            responseData.put("payType", orderResponse.getPayType());
+            responseData.put("payStatus", orderResponse.getPayStatus());
+            if (orderResponse.getPayParams() != null) {
+                responseData.put("payParams", JSON.parse(orderResponse.getPayParams()));
+            }
+
+            boolean isSuccess = orderResponse.isSuccess()
+                    && !"TIMEOUT".equals(orderResponse.getCode())
+                    && !"INSUFFICIENT_BALANCE".equals(orderResponse.getCode())
+                    && !"PAY_FAIL".equals(orderResponse.getCode())
+                    && !"SYSTEM_ERROR".equals(orderResponse.getCode());
+
+            if (isSuccess && (sceneEnum == SandboxSceneEnum.SUCCESS || sceneEnum == SandboxSceneEnum.REPEAT_NOTIFY)) {
+                PayOrder order = payOrderService.getOrderDetail(orderResponse.getOrderNo(), request.getMerchantNo());
+                if (order != null) {
+                    payOrderService.simulateAsyncNotifyAfterDelay(order);
+                }
+            }
+
+            responseData.put("channelResponse", orderResponse.getMsg());
+            responseData.put("channelCode", orderResponse.getCode());
+            return isSuccess ? 1 : 0;
+        } catch (BusinessException e) {
+            responseData.put("errorCode", e.getCode());
+            responseData.put("errorMsg", e.getMessage());
+            return 0;
+        } catch (Exception e) {
+            responseData.put("errorMsg", e.getMessage());
+            return 0;
+        }
+    }
+
+    private Integer executeSimulatedTest(SandboxSceneEnum sceneEnum, Map<String, Object> responseData,
+                                          SandboxTestRequest request) {
+        long delay = sceneEnum == SandboxSceneEnum.TIMEOUT ? 3000L : 500L;
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        switch (sceneEnum) {
+            case SUCCESS:
+            case REPEAT_NOTIFY:
+            case REFUND_SUCCESS:
+                responseData.put("code", 200);
+                responseData.put("message", "success");
+                responseData.put("orderNo", "SANDBOX_" + OrderNoGenerator.generate());
+                responseData.put("payUrl", "https://sandbox.example.com/pay/" + IdGenerator.generateIdStr());
+                return 1;
+            case FAILED:
+            case REFUND_FAILED:
+                responseData.put("code", 400);
+                responseData.put("message", "支付失败");
+                return 0;
+            case TIMEOUT:
+                responseData.put("code", 504);
+                responseData.put("message", "timeout");
+                return 0;
+            case INSUFFICIENT_BALANCE:
+                responseData.put("code", 402);
+                responseData.put("message", "余额不足");
+                return 0;
+            case SIGN_ERROR:
+                responseData.put("code", 401);
+                responseData.put("message", "签名错误");
+                return 0;
+            case AMOUNT_MISMATCH:
+                responseData.put("code", 402);
+                responseData.put("message", "金额不匹配");
+                return 0;
+            case CHANNEL_ERROR:
+                responseData.put("code", 500);
+                responseData.put("message", "通道系统异常");
+                return 0;
+            default:
+                responseData.put("code", 500);
+                responseData.put("message", "未知场景");
+                return 0;
+        }
+    }
+
     @Override
     public IPage<SandboxTestResultVO> listTestRecords(Long current, Long size, Map<String, Object> params) {
         LambdaQueryWrapper<SandboxTestRecord> wrapper = new LambdaQueryWrapper<>();
-        if (params.get("merchantNo") != null) {
+        if (params != null && params.get("merchantNo") != null && StrUtil.isNotBlank(params.get("merchantNo").toString())) {
             wrapper.eq(SandboxTestRecord::getMerchantNo, params.get("merchantNo"));
         }
-        if (params.get("testScene") != null) {
+        if (params != null && params.get("testScene") != null && StrUtil.isNotBlank(params.get("testScene").toString())) {
             wrapper.eq(SandboxTestRecord::getTestScene, params.get("testScene"));
         }
-        if (params.get("success") != null) {
+        if (params != null && params.get("success") != null) {
             wrapper.eq(SandboxTestRecord::getActualResult, params.get("success"));
         }
         wrapper.orderByDesc(SandboxTestRecord::getStartTime);
@@ -178,51 +268,19 @@ public class SandboxTestServiceImpl extends ServiceImpl<SandboxTestRecordMapper,
     @Override
     public List<Map<String, Object>> listTestScenes() {
         List<Map<String, Object>> scenes = new ArrayList<>();
-        scenes.add(buildScene(SCENE_SUCCESS, "支付成功", "模拟正常支付成功流程，包含异步通知"));
-        scenes.add(buildScene(SCENE_FAIL, "支付失败", "模拟支付失败的情况"));
-        scenes.add(buildScene(SCENE_TIMEOUT, "支付超时", "模拟支付请求超时的情况"));
-        scenes.add(buildScene(SCENE_DUPLICATE_NOTIFY, "重复通知", "模拟支付成功后发送多次异步通知"));
-        scenes.add(buildScene(SCENE_SIGN_ERROR, "签名错误", "模拟响应签名验证失败的情况"));
-        scenes.add(buildScene(SCENE_AMOUNT_MISMATCH, "金额不匹配", "模拟支付金额与订单金额不一致的情况"));
+        for (SandboxSceneEnum sceneEnum : SandboxSceneEnum.values()) {
+            Map<String, Object> scene = new HashMap<>();
+            scene.put("code", sceneEnum.getCode());
+            scene.put("name", sceneEnum.getName());
+            scene.put("description", sceneEnum.getDescription());
+            scenes.add(scene);
+        }
         return scenes;
     }
 
-    private Map<String, Object> buildScene(String code, String name, String description) {
-        Map<String, Object> scene = new HashMap<>();
-        scene.put("code", code);
-        scene.put("name", name);
-        scene.put("description", description);
-        return scene;
-    }
-
-    private Integer getExpectResult(String scene) {
-        if (SCENE_SUCCESS.equals(scene) || SCENE_DUPLICATE_NOTIFY.equals(scene)) {
-            return 1;
-        }
-        return 0;
-    }
-
-    private long getSimulateDelay(String scene) {
-        if (SCENE_TIMEOUT.equals(scene)) {
-            return 5000L;
-        }
-        return 500L;
-    }
-
-    private String simulateNotify(String notifyUrl, boolean success, boolean duplicate) {
-        if (StrUtil.isBlank(notifyUrl)) {
-            return "未配置回调地址，跳过通知模拟";
-        }
-        StringBuilder result = new StringBuilder();
-        int times = duplicate ? 3 : 1;
-        for (int i = 1; i <= times; i++) {
-            result.append(String.format("第%d次通知[%s]: %s; ", i, notifyUrl, success ? "SUCCESS" : "FAIL"));
-        }
-        return result.toString();
-    }
-
     private SandboxTestResultVO convertToVO(SandboxTestRecord record) {
-        boolean success = record.getExpectResult().equals(record.getActualResult());
+        boolean success = record.getExpectResult() != null
+                && record.getExpectResult().equals(record.getActualResult());
         return SandboxTestResultVO.builder()
                 .testId(record.getTestId())
                 .merchantNo(record.getMerchantNo())

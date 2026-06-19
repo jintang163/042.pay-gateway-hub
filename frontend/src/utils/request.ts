@@ -2,6 +2,7 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse,
 import { message } from 'antd';
 import type { ApiResponse } from '@/types/common';
 import { useUserStore } from '@/store/userStore';
+import { useAppStore } from '@/store/appStore';
 import { downloadFile } from '@/utils';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -35,6 +36,12 @@ service.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     config.headers['X-Request-Id'] = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    const appStore = useAppStore.getState();
+    if (appStore.sandboxMode) {
+      config.headers['X-Sandbox-Mode'] = 'true';
+    }
+
     return config;
   },
   (error) => {

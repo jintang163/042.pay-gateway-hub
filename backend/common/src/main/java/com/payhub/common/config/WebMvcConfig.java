@@ -2,6 +2,7 @@ package com.payhub.common.config;
 
 import com.payhub.common.interceptor.ApiLogInterceptor;
 import com.payhub.common.interceptor.JwtAuthInterceptor;
+import com.payhub.common.interceptor.SandboxInterceptor;
 import com.payhub.common.interceptor.SignInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,11 +22,24 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private final ApiLogInterceptor apiLogInterceptor;
 
+    private final SandboxInterceptor sandboxInterceptor;
+
     @Value("${payhub.upload.path:./uploads}")
     private String uploadPath;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(sandboxInterceptor)
+                .addPathPatterns("/**")
+                .excludePathPatterns(
+                        "/error",
+                        "/static/**",
+                        "/public/**",
+                        "/uploads/**",
+                        "/actuator/**"
+                )
+                .order(0);
+
         registry.addInterceptor(apiLogInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(

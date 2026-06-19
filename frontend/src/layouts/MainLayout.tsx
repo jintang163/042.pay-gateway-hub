@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layout, Menu, Breadcrumb, Dropdown, Avatar, Button, theme, Tooltip } from 'antd';
+import { Layout, Menu, Breadcrumb, Dropdown, Avatar, Button, theme, Tooltip, Switch, Tag, Modal } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -20,6 +20,7 @@ import {
   PaletteOutlined,
   RocketOutlined,
   TeamOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import type { MenuProps } from 'antd';
@@ -73,11 +74,28 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useUserStore();
-  const { collapsed, toggleCollapsed, theme: appTheme, toggleTheme } = useAppStore();
+  const { collapsed, toggleCollapsed, theme: appTheme, toggleTheme, sandboxMode, toggleSandboxMode } = useAppStore();
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
   const [openKeys, setOpenKeys] = useState<string[]>(['']);
+
+  const handleSandboxToggle = (checked: boolean) => {
+    if (checked) {
+      Modal.confirm({
+        title: '启用沙箱环境',
+        icon: <ExclamationCircleOutlined />,
+        content: '沙箱环境将使用独立的测试数据库，所有操作不会影响真实数据。数据每日凌晨4点自动清理。',
+        okText: '确认启用',
+        cancelText: '取消',
+        onOk: () => {
+          toggleSandboxMode();
+        },
+      });
+    } else {
+      toggleSandboxMode();
+    }
+  };
 
   const menuItems = buildMenuItems(routesConfig);
   const breadcrumbItems = findBreadcrumb(location.pathname);
@@ -190,6 +208,33 @@ const MainLayout = () => {
             <Breadcrumb items={breadcrumbItems} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Tooltip title="沙箱环境开关">
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '0 12px',
+                  height: 32,
+                  borderRadius: 16,
+                  background: sandboxMode ? '#fffbe6' : 'transparent',
+                  border: sandboxMode ? '1px solid #ffe58f' : '1px solid transparent',
+                }}
+              >
+                <ExperimentOutlined style={{ color: sandboxMode ? '#faad14' : '#999' }} />
+                <span style={{ fontSize: 13, color: sandboxMode ? '#d48806' : '#666' }}>沙箱</span>
+                <Switch
+                  size="small"
+                  checked={sandboxMode}
+                  onChange={handleSandboxToggle}
+                />
+              </div>
+            </Tooltip>
+            {sandboxMode && (
+              <Tag color="warning" icon={<ExperimentOutlined />}>
+                沙箱环境
+              </Tag>
+            )}
             <Tooltip title={appTheme === 'light' ? '切换深色模式' : '切换浅色模式'}>
               <Button
                 type="text"
