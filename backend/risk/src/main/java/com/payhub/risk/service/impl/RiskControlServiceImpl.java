@@ -151,13 +151,15 @@ public class RiskControlServiceImpl extends ServiceImpl<RiskControlLogMapper, Ri
     }
 
     private boolean checkWhitelist(RiskFact fact) {
-        boolean ipInWhitelist = riskWhitelistService.checkInList(ListTypeEnum.IP.getCode(), fact.getClientIp());
+        String merchantNo = fact.getMerchantNo();
+
+        boolean ipInWhitelist = riskWhitelistService.checkInList(merchantNo, ListTypeEnum.IP.getCode(), fact.getClientIp());
         boolean userInWhitelist = StrUtil.isNotBlank(fact.getUserIdentity())
-                && riskWhitelistService.checkInList(ListTypeEnum.USER.getCode(), fact.getUserIdentity());
+                && riskWhitelistService.checkInList(merchantNo, ListTypeEnum.USER.getCode(), fact.getUserIdentity());
         boolean merchantInWhitelist = StrUtil.isNotBlank(fact.getMerchantNo())
-                && riskWhitelistService.checkInList(ListTypeEnum.MERCHANT.getCode(), fact.getMerchantNo());
+                && riskWhitelistService.checkInList(null, ListTypeEnum.MERCHANT.getCode(), fact.getMerchantNo());
         boolean deviceInWhitelist = StrUtil.isNotBlank(fact.getDeviceId())
-                && riskWhitelistService.checkInList(ListTypeEnum.DEVICE.getCode(), fact.getDeviceId());
+                && riskWhitelistService.checkInList(merchantNo, ListTypeEnum.DEVICE.getCode(), fact.getDeviceId());
 
         boolean whitelisted = ipInWhitelist || userInWhitelist || merchantInWhitelist || deviceInWhitelist;
         fact.setWhitelisted(whitelisted);
@@ -165,16 +167,16 @@ public class RiskControlServiceImpl extends ServiceImpl<RiskControlLogMapper, Ri
         if (whitelisted) {
             RiskWhitelist wl = null;
             if (ipInWhitelist) {
-                wl = riskWhitelistService.getByTypeAndValue(ListTypeEnum.IP.getCode(), fact.getClientIp());
+                wl = riskWhitelistService.getByTypeAndValue(merchantNo, ListTypeEnum.IP.getCode(), fact.getClientIp());
             } else if (userInWhitelist) {
-                wl = riskWhitelistService.getByTypeAndValue(ListTypeEnum.USER.getCode(), fact.getUserIdentity());
+                wl = riskWhitelistService.getByTypeAndValue(merchantNo, ListTypeEnum.USER.getCode(), fact.getUserIdentity());
             } else if (merchantInWhitelist) {
-                wl = riskWhitelistService.getByTypeAndValue(ListTypeEnum.MERCHANT.getCode(), fact.getMerchantNo());
+                wl = riskWhitelistService.getByTypeAndValue(null, ListTypeEnum.MERCHANT.getCode(), fact.getMerchantNo());
             } else if (deviceInWhitelist) {
-                wl = riskWhitelistService.getByTypeAndValue(ListTypeEnum.DEVICE.getCode(), fact.getDeviceId());
+                wl = riskWhitelistService.getByTypeAndValue(merchantNo, ListTypeEnum.DEVICE.getCode(), fact.getDeviceId());
             }
 
-            if (wl != null && StrUtil.isBlank(wl.getBypassRules())) {
+            if (wl != null && (StrUtil.isBlank(wl.getBypassRules()) || "*".equals(wl.getBypassRules().trim()))) {
                 return true;
             }
         }

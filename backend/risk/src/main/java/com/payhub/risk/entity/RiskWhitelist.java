@@ -15,6 +15,8 @@ public class RiskWhitelist implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String merchantNo;
+
     private String listType;
 
     private String listValue;

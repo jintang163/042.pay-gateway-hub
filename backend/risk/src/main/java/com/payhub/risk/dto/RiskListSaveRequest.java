@@ -18,6 +18,8 @@ public class RiskListSaveRequest implements Serializable {
 
     private Long id;
 
+    private String merchantNo;
+
     private String listType;
 
     private String listValue;

@@ -67,10 +67,12 @@ public class RiskListController {
     public Result<IPage<RiskListVO>> listWhitelist(
             @RequestParam(defaultValue = "1") Long current,
             @RequestParam(defaultValue = "10") Long size,
+            @RequestParam(required = false) String merchantNo,
             @RequestParam(required = false) String listType,
             @RequestParam(required = false) String listValue,
             @RequestParam(required = false) Integer status) {
         Map<String, Object> params = new HashMap<>();
+        params.put("merchantNo", merchantNo);
         params.put("listType", listType);
         params.put("listValue", listValue);
         params.put("status", status);
@@ -80,24 +82,28 @@ public class RiskListController {
 
     @PostMapping("/whitelist")
     public Result<Void> addWhitelist(@Valid @RequestBody RiskListSaveRequest request) {
-        RiskWhitelist whitelist = new RiskWhitelist();
-        BeanUtils.copyProperties(request, whitelist);
-        riskWhitelistService.save(whitelist);
+        riskWhitelistService.addToWhitelist(request);
         return Result.success();
     }
 
     @DeleteMapping("/whitelist/{id}")
     public Result<Void> deleteWhitelist(@PathVariable Long id) {
-        riskWhitelistService.deleteById(id);
+        riskWhitelistService.removeFromWhitelist(id);
         return Result.success();
     }
 
     @GetMapping("/whitelist/check")
     public Result<Boolean> checkWhitelist(
+            @RequestParam(required = false) String merchantNo,
             @RequestParam String listType,
             @RequestParam String listValue,
             @RequestParam(required = false) String ruleCode) {
-        boolean inList = riskWhitelistService.checkInList(listType, listValue, ruleCode);
+        boolean inList;
+        if (ruleCode != null) {
+            inList = riskWhitelistService.checkWhitelistBypass(merchantNo, listType, listValue, ruleCode);
+        } else {
+            inList = riskWhitelistService.checkInList(merchantNo, listType, listValue);
+        }
         return Result.success(inList);
     }
 }

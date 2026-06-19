@@ -18,9 +18,17 @@ public interface RiskWhitelistService extends IService<RiskWhitelist> {
 
     boolean checkInList(String listType, String listValue);
 
+    boolean checkInList(String merchantNo, String listType, String listValue);
+
     RiskWhitelist getByTypeAndValue(String listType, String listValue);
+
+    RiskWhitelist getByTypeAndValue(String merchantNo, String listType, String listValue);
 
     RiskWhitelist isWhitelisted(String listType, String listValue);
 
+    RiskWhitelist isWhitelisted(String merchantNo, String listType, String listValue);
+
     boolean checkWhitelistBypass(String listType, String listValue, String ruleCode);
+
+    boolean checkWhitelistBypass(String merchantNo, String listType, String listValue, String ruleCode);
 }

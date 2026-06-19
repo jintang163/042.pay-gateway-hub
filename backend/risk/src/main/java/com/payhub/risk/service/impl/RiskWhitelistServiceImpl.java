@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, RiskWhitelist> implements RiskWhitelistService {
 
     private static final String WHITELIST_KEY_PREFIX = "risk:whitelist:";
+    private static final String GLOBAL_MERCHANT = "GLOBAL";
     private static final long CACHE_EXPIRE_HOURS = 24;
 
     @Autowired
@@ -43,7 +44,11 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
             throw new BusinessException("名单值不能为空");
         }
 
+        String merchantNo = request.getMerchantNo();
+
         RiskWhitelist exist = this.getOne(new LambdaQueryWrapper<RiskWhitelist>()
+                .eq(StrUtil.isNotBlank(merchantNo), RiskWhitelist::getMerchantNo, merchantNo)
+                .isNull(StrUtil.isBlank(merchantNo), RiskWhitelist::getMerchantNo)
                 .eq(RiskWhitelist::getListType, request.getListType())
                 .eq(RiskWhitelist::getListValue, request.getListValue())
                 .eq(RiskWhitelist::getDeleted, 0));
@@ -52,6 +57,7 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
         }
 
         RiskWhitelist whitelist = new RiskWhitelist();
+        whitelist.setMerchantNo(merchantNo);
         whitelist.setListType(request.getListType());
         whitelist.setListValue(request.getListValue());
         whitelist.setListSource(request.getListSource());
@@ -61,10 +67,15 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
         whitelist.setExpireTime(request.getExpireTime());
         this.save(whitelist);
 
-        String cacheKey = WHITELIST_KEY_PREFIX + request.getListType() + ":" + request.getListValue();
+        String cacheKey = buildCacheKey(merchantNo, request.getListType(), request.getListValue());
         redisTemplate.opsForValue().set(cacheKey, whitelist, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
 
-        log.info("添加白名单成功，类型：{}，值：{}", request.getListType(), request.getListValue());
+        log.info("添加白名单成功，商户：{}，类型：{}，值：{}", merchantNo, request.getListType(), request.getListValue());
+    }
+
+    private String buildCacheKey(String merchantNo, String listType, String listValue) {
+        String merchantKey = StrUtil.isNotBlank(merchantNo) ? merchantNo : GLOBAL_MERCHANT;
+        return WHITELIST_KEY_PREFIX + merchantKey + ":" + listType + ":" + listValue;
     }
 
     @Override
@@ -77,19 +88,34 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
 
         this.removeById(id);
 
-        String cacheKey = WHITELIST_KEY_PREFIX + whitelist.getListType() + ":" + whitelist.getListValue();
+        String cacheKey = buildCacheKey(whitelist.getMerchantNo(), whitelist.getListType(), whitelist.getListValue());
         redisTemplate.delete(cacheKey);
 
-        log.info("移除白名单成功，ID：{}，类型：{}，值：{}", id, whitelist.getListType(), whitelist.getListValue());
+        log.info("移除白名单成功，ID：{}，商户：{}，类型：{}，值：{}",
+                id, whitelist.getMerchantNo(), whitelist.getListType(), whitelist.getListValue());
     }
 
     @Override
     public RiskWhitelist isWhitelisted(String listType, String listValue) {
+        return isWhitelisted(null, listType, listValue);
+    }
+
+    @Override
+    public RiskWhitelist isWhitelisted(String merchantNo, String listType, String listValue) {
         if (StrUtil.isBlank(listType) || StrUtil.isBlank(listValue)) {
             return null;
         }
 
-        String cacheKey = WHITELIST_KEY_PREFIX + listType + ":" + listValue;
+        RiskWhitelist whitelist = queryWhitelistFromCache(merchantNo, listType, listValue);
+        if (whitelist == null && StrUtil.isNotBlank(merchantNo)) {
+            whitelist = queryWhitelistFromCache(null, listType, listValue);
+        }
+
+        return whitelist;
+    }
+
+    private RiskWhitelist queryWhitelistFromCache(String merchantNo, String listType, String listValue) {
+        String cacheKey = buildCacheKey(merchantNo, listType, listValue);
         Object cachedObj = redisTemplate.opsForValue().get(cacheKey);
         if (cachedObj != null && cachedObj instanceof RiskWhitelist) {
             RiskWhitelist cached = (RiskWhitelist) cachedObj;
@@ -104,6 +130,8 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
         }
 
         RiskWhitelist whitelist = this.getOne(new LambdaQueryWrapper<RiskWhitelist>()
+                .eq(StrUtil.isNotBlank(merchantNo), RiskWhitelist::getMerchantNo, merchantNo)
+                .isNull(StrUtil.isBlank(merchantNo), RiskWhitelist::getMerchantNo)
                 .eq(RiskWhitelist::getListType, listType)
                 .eq(RiskWhitelist::getListValue, listValue)
                 .eq(RiskWhitelist::getDeleted, 0));
@@ -123,17 +151,32 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
 
     @Override
     public boolean checkInList(String listType, String listValue) {
-        return isWhitelisted(listType, listValue) != null;
+        return checkInList(null, listType, listValue);
+    }
+
+    @Override
+    public boolean checkInList(String merchantNo, String listType, String listValue) {
+        return isWhitelisted(merchantNo, listType, listValue) != null;
     }
 
     @Override
     public RiskWhitelist getByTypeAndValue(String listType, String listValue) {
-        return isWhitelisted(listType, listValue);
+        return getByTypeAndValue(null, listType, listValue);
+    }
+
+    @Override
+    public RiskWhitelist getByTypeAndValue(String merchantNo, String listType, String listValue) {
+        return isWhitelisted(merchantNo, listType, listValue);
     }
 
     @Override
     public boolean checkWhitelistBypass(String listType, String listValue, String ruleCode) {
-        RiskWhitelist whitelist = this.isWhitelisted(listType, listValue);
+        return checkWhitelistBypass(null, listType, listValue, ruleCode);
+    }
+
+    @Override
+    public boolean checkWhitelistBypass(String merchantNo, String listType, String listValue, String ruleCode) {
+        RiskWhitelist whitelist = this.isWhitelisted(merchantNo, listType, listValue);
         if (whitelist == null) {
             return false;
         }
@@ -159,6 +202,9 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
         wrapper.eq(RiskWhitelist::getDeleted, 0);
 
         if (params != null) {
+            if (params.get("merchantNo") != null && StrUtil.isNotBlank(params.get("merchantNo").toString())) {
+                wrapper.eq(RiskWhitelist::getMerchantNo, params.get("merchantNo").toString());
+            }
             if (params.get("listType") != null && StrUtil.isNotBlank(params.get("listType").toString())) {
                 wrapper.eq(RiskWhitelist::getListType, params.get("listType").toString());
             }
@@ -179,6 +225,7 @@ public class RiskWhitelistServiceImpl extends ServiceImpl<RiskWhitelistMapper, R
     private RiskListVO convertToVO(RiskWhitelist entity) {
         RiskListVO vo = new RiskListVO();
         vo.setId(entity.getId());
+        vo.setMerchantNo(entity.getMerchantNo());
         vo.setListType(entity.getListType());
         vo.setListValue(entity.getListValue());
         vo.setListSource(entity.getListSource());

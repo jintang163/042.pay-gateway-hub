@@ -370,15 +370,23 @@ CREATE TABLE IF NOT EXISTS risk_blacklist (
 
 CREATE TABLE IF NOT EXISTS risk_whitelist (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    target_type VARCHAR(32) NOT NULL,
-    target_value VARCHAR(256) NOT NULL,
-    reason VARCHAR(512),
-    expire_time DATETIME,
-    created_by VARCHAR(64),
+    merchant_no VARCHAR(32) DEFAULT NULL COMMENT '商户号，为空表示全局白名单',
+    list_type VARCHAR(32) NOT NULL COMMENT '名单类型：IP-IP地址, USER-用户, MERCHANT-商户, DEVICE-设备',
+    list_value VARCHAR(256) NOT NULL COMMENT '名单值',
+    list_source VARCHAR(64) DEFAULT NULL COMMENT '名单来源',
+    bypass_rules VARCHAR(512) DEFAULT NULL COMMENT '免检规则，*表示全部免检，多个规则用逗号分隔',
+    reason VARCHAR(512) DEFAULT NULL COMMENT '添加原因',
+    operator_id VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+    operator_name VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+    status INT DEFAULT 1 COMMENT '状态：1启用 0禁用',
+    expire_time DATETIME DEFAULT NULL COMMENT '过期时间',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted INT DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    deleted INT DEFAULT 0,
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_list_type (list_type),
+    INDEX idx_list_value (list_value)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控白名单表';
 
 -- =====================================================
 -- 沙箱发票表
