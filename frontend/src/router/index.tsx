@@ -31,6 +31,7 @@ const AgentProfitRule = lazy(() => import('@/pages/AgentProfitRule'));
 const AgentProfit = lazy(() => import('@/pages/AgentProfit'));
 const AgentWithdraw = lazy(() => import('@/pages/AgentWithdraw'));
 const InvoiceList = lazy(() => import('@/pages/InvoiceList'));
+const ReportSubscription = lazy(() => import('@/pages/ReportSubscription'));
 
 export interface RouteConfigItem {
   path: string;
@@ -108,6 +109,11 @@ export const routesConfig: RouteConfigItem[] = [
         path: 'reconcile',
         name: '对账与差错',
         element: <Reconcile />,
+      },
+      {
+        path: 'report',
+        name: '报表订阅',
+        element: <ReportSubscription />,
       },
     ],
   },

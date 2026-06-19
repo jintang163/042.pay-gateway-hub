@@ -14,3 +14,4 @@ export { paymentPageApi, colorSchemes } from './paymentPage';
 export { merchantConfigTestApi } from './merchantConfigTest';
 export { agentRelationApi, agentProfitRuleApi, agentProfitApi, agentWithdrawApi } from './agent';
 export { invoiceApi } from './invoice';
+export { reportApi } from './report';

@@ -2,6 +2,7 @@ package com.payhub.admin.config;
 
 import com.payhub.common.sandbox.SandboxDataCleanService;
 import com.payhub.pay.service.PayRefundService;
+import com.payhub.settlement.service.ReportPushService;
 import com.payhub.settlement.service.SettlementService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ public class ScheduleConfig {
 
     @Autowired(required = false)
     private SandboxDataCleanService sandboxDataCleanService;
+
+    @Autowired
+    private ReportPushService reportPushService;
 
     @Scheduled(cron = "0 */5 * * * ?")
     public void refundRetryTask() {
@@ -71,6 +75,28 @@ public class ScheduleConfig {
             }
         } catch (Exception e) {
             log.error("定时任务：沙箱数据清理任务执行异常", e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 8 * * ?")
+    public void dailyReportPushTask() {
+        log.info("定时任务：开始执行日报推送任务");
+        try {
+            reportPushService.triggerDailyReportPush();
+            log.info("定时任务：日报推送任务执行完成");
+        } catch (Exception e) {
+            log.error("定时任务：日报推送任务执行异常", e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 9 ? * MON")
+    public void weeklyReportPushTask() {
+        log.info("定时任务：开始执行周报推送任务");
+        try {
+            reportPushService.triggerWeeklyReportPush();
+            log.info("定时任务：周报推送任务执行完成");
+        } catch (Exception e) {
+            log.error("定时任务：周报推送任务执行异常", e);
         }
     }
 }

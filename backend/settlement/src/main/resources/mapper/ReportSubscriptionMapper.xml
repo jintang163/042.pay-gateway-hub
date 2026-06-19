@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.settlement.mapper.ReportSubscriptionMapper">
+
+    <resultMap id="ReportSubscriptionMap" type="com.payhub.settlement.entity.ReportSubscription">
+        <id column="id" property="id"/>
+        <result column="subscription_no" property="subscriptionNo"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="report_type" property="reportType"/>
+        <result column="report_category" property="reportCategory"/>
+        <result column="push_channel" property="pushChannel"/>
+        <result column="email_list" property="emailList"/>
+        <result column="phone_list" property="phoneList"/>
+        <result column="push_time" property="pushTime"/>
+        <result column="enabled" property="enabled"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+</mapper>

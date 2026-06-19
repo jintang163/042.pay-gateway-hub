@@ -999,3 +999,73 @@ VALUES
  '91330100MA12345678', '沙箱测试商户1百望配置', 1, NOW(), NOW()),
 ('M000002', 'NUONUO', 'sandbox_nuonuo_appkey2', 'sandbox_nuonuo_secret2', 'sandbox_nuonuo_token2',
  '91330100MA87654321', '沙箱测试商户2诺诺配置', 1, NOW(), NOW());
+
+-- ==============================================
+-- 报表订阅配置表
+-- ==============================================
+DROP TABLE IF EXISTS `report_subscription`;
+CREATE TABLE `report_subscription` (
+    `id`              BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `subscription_no` VARCHAR(32)   NOT NULL COMMENT '订阅编号',
+    `merchant_no`     VARCHAR(32)   NOT NULL COMMENT '商户号',
+    `report_type`     TINYINT       NOT NULL COMMENT '报表类型: 1=日报, 2=周报',
+    `report_category` VARCHAR(32)   NOT NULL DEFAULT 'SETTLEMENT' COMMENT '报表类别: SETTLEMENT=结算报表, ORDER=订单报表, FEE=手续费报表',
+    `push_channel`    TINYINT       NOT NULL DEFAULT 1 COMMENT '推送渠道: 1=邮件, 2=邮件+短信',
+    `email_list`      VARCHAR(500)  NOT NULL COMMENT '接收邮箱列表，多个逗号分隔',
+    `phone_list`      VARCHAR(200)  DEFAULT NULL COMMENT '接收手机号列表，多个逗号分隔',
+    `push_time`       VARCHAR(20)   NOT NULL DEFAULT '09:00' COMMENT '推送时间(HH:mm)',
+    `enabled`         TINYINT       NOT NULL DEFAULT 1 COMMENT '是否启用: 0=禁用, 1=启用',
+    `remark`          VARCHAR(200)  DEFAULT NULL COMMENT '备注',
+    `created_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_subscription_no` (`subscription_no`),
+    KEY `idx_merchant_no` (`merchant_no`),
+    KEY `idx_report_type` (`report_type`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报表订阅配置表';
+
+-- 初始化报表订阅数据
+INSERT INTO `report_subscription`
+    (subscription_no, merchant_no, report_type, report_category, push_channel, email_list, phone_list, push_time, enabled, remark, created_at, updated_at)
+VALUES
+('SUB202501010001', 'M000001', 1, 'SETTLEMENT', 1, 'finance@example.com,ceo@example.com', NULL, '09:00', 1, '沙箱商户1-结算日报订阅', NOW(), NOW()),
+('SUB202501010002', 'M000001', 2, 'SETTLEMENT', 1, 'finance@example.com', NULL, '09:30', 1, '沙箱商户1-结算周报订阅', NOW(), NOW()),
+('SUB202501010003', 'M000002', 1, 'SETTLEMENT', 1, 'ops@merchant2.com', NULL, '08:30', 1, '沙箱商户2-结算日报订阅', NOW(), NOW());
+
+-- ==============================================
+-- 报表推送记录表
+-- ==============================================
+DROP TABLE IF EXISTS `report_push_record`;
+CREATE TABLE `report_push_record` (
+    `id`              BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `record_no`       VARCHAR(32)   NOT NULL COMMENT '推送记录编号',
+    `subscription_no` VARCHAR(32)   DEFAULT NULL COMMENT '订阅编号',
+    `merchant_no`     VARCHAR(32)   NOT NULL COMMENT '商户号',
+    `report_type`     TINYINT       NOT NULL COMMENT '报表类型: 1=日报, 2=周报',
+    `report_category` VARCHAR(32)   NOT NULL DEFAULT 'SETTLEMENT' COMMENT '报表类别',
+    `report_title`    VARCHAR(200)  NOT NULL COMMENT '报表标题',
+    `report_period`   VARCHAR(50)   NOT NULL COMMENT '报表周期(日期范围)',
+    `start_date`      DATE          NOT NULL COMMENT '统计开始日期',
+    `end_date`        DATE          NOT NULL COMMENT '统计结束日期',
+    `push_status`     TINYINT       NOT NULL DEFAULT 0 COMMENT '推送状态: 0=待推送, 1=推送中, 2=推送成功, 3=推送失败',
+    `push_channel`    TINYINT       NOT NULL DEFAULT 1 COMMENT '推送渠道: 1=邮件, 2=邮件+短信',
+    `email_targets`   VARCHAR(500)  DEFAULT NULL COMMENT '实际推送邮箱',
+    `phone_targets`   VARCHAR(200)  DEFAULT NULL COMMENT '实际推送手机号',
+    `file_url`        VARCHAR(500)  DEFAULT NULL COMMENT '报表文件URL',
+    `file_size`       BIGINT        DEFAULT NULL COMMENT '文件大小(字节)',
+    `success_count`   INT           NOT NULL DEFAULT 0 COMMENT '成功数量',
+    `fail_count`      INT           NOT NULL DEFAULT 0 COMMENT '失败数量',
+    `fail_reason`     VARCHAR(500)  DEFAULT NULL COMMENT '失败原因',
+    `trigger_type`    TINYINT       NOT NULL DEFAULT 1 COMMENT '触发方式: 1=定时任务, 2=手动触发',
+    `push_time`       DATETIME      DEFAULT NULL COMMENT '推送时间',
+    `created_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_record_no` (`record_no`),
+    KEY `idx_subscription_no` (`subscription_no`),
+    KEY `idx_merchant_no` (`merchant_no`),
+    KEY `idx_push_status` (`push_status`),
+    KEY `idx_start_end_date` (`start_date`, `end_date`),
+    KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报表推送记录表';
