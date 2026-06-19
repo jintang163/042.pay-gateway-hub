@@ -18,13 +18,17 @@ import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.settlement.dto.ReconcileVO;
 import com.payhub.settlement.entity.ErrorOrder;
+import com.payhub.settlement.entity.ReconcileAutoWriteoffRule;
 import com.payhub.settlement.entity.ReconcileDetail;
 import com.payhub.settlement.entity.ReconcileRecord;
+import com.payhub.settlement.entity.ReconcileWriteoffRecord;
 import com.payhub.settlement.enums.*;
 import com.payhub.settlement.mapper.ErrorOrderMapper;
 import com.payhub.settlement.mapper.ReconcileDetailMapper;
 import com.payhub.settlement.mapper.ReconcileRecordMapper;
+import com.payhub.settlement.service.ReconcileAutoWriteoffRuleService;
 import com.payhub.settlement.service.ReconcileService;
+import com.payhub.settlement.service.ReconcileWriteoffRecordService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -51,6 +55,12 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
 
     @Autowired
     private PayChannelStrategyFactory payChannelStrategyFactory;
+
+    @Autowired
+    private ReconcileAutoWriteoffRuleService autoWriteoffRuleService;
+
+    @Autowired
+    private ReconcileWriteoffRecordService writeoffRecordService;
 
     @Override
     public ReconcileVO getByReconcileNo(String reconcileNo) {
@@ -262,17 +272,40 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
             int totalCount = matchCount + mismatchCount;
 
             if (CollUtil.isNotEmpty(mismatchDetails)) {
+                int autoWriteoffCount = 0;
                 for (ReconcileDetail detail : mismatchDetails) {
                     reconcileDetailMapper.insert(detail);
 
-                    ErrorOrder errorOrder = buildAutoErrorOrder(record.getReconcileNo(), detail);
-                    errorOrderMapper.insert(errorOrder);
+                    ReconcileAutoWriteoffRule matchedRule = autoWriteoffRuleService.matchRule(detail);
+                    if (matchedRule != null) {
+                        autoWriteoffCount++;
+                        ReconcileWriteoffRecord writeoffRecord = buildAutoWriteoffRecord(
+                                record.getReconcileNo(), detail, matchedRule);
+                        writeoffRecordService.save(writeoffRecord);
 
-                    detail.setErrorOrderNo(errorOrder.getErrorNo());
-                    detail.setHandleStatus(ReconcileHandleStatusEnum.PROCESSING.getCode());
-                    reconcileDetailMapper.updateById(detail);
+                        detail.setErrorOrderNo(writeoffRecord.getWriteoffNo());
+                        detail.setHandleStatus(ReconcileHandleStatusEnum.PROCESSED.getCode());
+                        detail.setHandleRemark("自动平账：匹配规则[" + matchedRule.getRuleName() + "]");
+                        detail.setHandleUserId("SYSTEM");
+                        detail.setHandleUserName("系统自动");
+                        detail.setHandleTime(LocalDateTime.now());
+                        reconcileDetailMapper.updateById(detail);
+
+                        writeoffRecordService.executeWriteoff(writeoffRecord.getId());
+
+                        log.info("差异明细自动平账，detailNo：{}，规则：{}，writeoffNo：{}",
+                                detail.getDetailNo(), matchedRule.getRuleName(), writeoffRecord.getWriteoffNo());
+                    } else {
+                        ErrorOrder errorOrder = buildAutoErrorOrder(record.getReconcileNo(), detail);
+                        errorOrderMapper.insert(errorOrder);
+
+                        detail.setErrorOrderNo(errorOrder.getErrorNo());
+                        detail.setHandleStatus(ReconcileHandleStatusEnum.PROCESSING.getCode());
+                        reconcileDetailMapper.updateById(detail);
+                    }
                 }
-                log.info("保存差异明细 {} 条并自动生成差错单, 对账单号: {}", mismatchDetails.size(), record.getReconcileNo());
+                log.info("保存差异明细 {} 条，自动平账 {} 条，生成差错单 {} 条，对账单号: {}",
+                        mismatchDetails.size(), autoWriteoffCount, mismatchDetails.size() - autoWriteoffCount, record.getReconcileNo());
             }
 
             record.setTotalCount(totalCount);
@@ -433,5 +466,31 @@ public class ReconcileServiceImpl extends ServiceImpl<ReconcileRecordMapper, Rec
         }
         vo.setReconcileStatusDesc(statusDesc);
         return vo;
+    }
+
+    private ReconcileWriteoffRecord buildAutoWriteoffRecord(String reconcileNo, ReconcileDetail detail,
+                                                             ReconcileAutoWriteoffRule rule) {
+        ReconcileWriteoffRecord record = new ReconcileWriteoffRecord();
+        record.setWriteoffNo(OrderNoGenerator.generateWithPrefix("WO"));
+        record.setReconcileNo(reconcileNo);
+        record.setDetailId(detail.getId());
+        record.setDetailNo(detail.getDetailNo());
+        record.setMerchantNo(detail.getMerchantNo());
+        record.setPayChannel(detail.getPayChannel());
+        record.setDiffType(detail.getDiffType());
+        record.setDiffAmount(detail.getDiffAmount());
+        record.setWriteoffAmount(detail.getDiffAmount() != null ? detail.getDiffAmount().abs() : BigDecimal.ZERO);
+        record.setWriteoffType(rule.getHandleType() != null ? rule.getHandleType() : WriteoffTypeEnum.IGNORE.getCode());
+        record.setWriteoffSource(WriteoffSourceEnum.AUTO.getCode());
+        record.setRuleId(rule.getId());
+        record.setRuleName(rule.getRuleName());
+        record.setWriteoffStatus(WriteoffStatusEnum.PENDING.getCode());
+        record.setErrorOrderNo(detail.getErrorOrderNo());
+        record.setOrderNo(detail.getOrderNo());
+        record.setChannelTradeNo(detail.getChannelTradeNo());
+        record.setWriteoffRemark("自动平账：匹配规则[" + rule.getRuleName() + "]，最大金额" + rule.getMaxAmount());
+        record.setOperatorId("SYSTEM");
+        record.setOperatorName("系统自动");
+        return record;
     }
 }

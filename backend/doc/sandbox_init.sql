@@ -793,3 +793,75 @@ VALUES
  0, NULL, NULL, NULL,
  '王五', '13700137000', 'wangwu@example.com', 1, '沙箱示例-未认证接收方',
  'admin', '系统管理员', NOW(), NOW());
+
+-- =====================================================
+-- 对账自动平账规则配置表
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS reconcile_auto_writeoff_rule (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    rule_name VARCHAR(128) NOT NULL COMMENT '规则名称',
+    merchant_no VARCHAR(32) DEFAULT NULL COMMENT '商户号，为空表示全局规则',
+    pay_channel VARCHAR(32) DEFAULT NULL COMMENT '支付渠道，为空表示所有渠道',
+    diff_type INT NOT NULL COMMENT '适用的差异类型：1长款 2短款 3金额不一致',
+    max_amount DECIMAL(12,2) NOT NULL DEFAULT 10.00 COMMENT '最大自动平账金额',
+    auto_writeoff INT NOT NULL DEFAULT 1 COMMENT '是否自动平账：1是 0否',
+    handle_type INT DEFAULT NULL COMMENT '自动平账处理方式：1补单 2退款 3调账 4忽略',
+    enabled INT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用 0禁用',
+    priority INT DEFAULT 0 COMMENT '优先级，数值越大优先级越高',
+    remark VARCHAR(512) DEFAULT NULL COMMENT '备注',
+    operator_id VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+    operator_name VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_pay_channel (pay_channel),
+    INDEX idx_diff_type (diff_type),
+    INDEX idx_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对账自动平账规则配置表';
+
+INSERT INTO reconcile_auto_writeoff_rule (rule_name, merchant_no, pay_channel, diff_type, max_amount, auto_writeoff, handle_type, enabled, priority, remark, operator_id, operator_name)
+VALUES
+('小额长款自动平账', NULL, NULL, 1, 10.00, 1, 4, 1, 10, '全局规则：长款金额小于10元自动忽略平账', 'admin', '系统管理员'),
+('小额短款自动补单', NULL, NULL, 2, 10.00, 1, 1, 1, 10, '全局规则：短款金额小于10元自动补单', 'admin', '系统管理员'),
+('小额金额差异自动调账', NULL, NULL, 3, 10.00, 1, 3, 1, 5, '全局规则：金额差异小于10元自动调账', 'admin', '系统管理员');
+
+-- =====================================================
+-- 对账补账记录表
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS reconcile_writeoff_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    writeoff_no VARCHAR(64) NOT NULL UNIQUE COMMENT '补账编号',
+    reconcile_no VARCHAR(64) NOT NULL COMMENT '对账单号',
+    detail_id BIGINT NOT NULL COMMENT '差异明细ID',
+    detail_no VARCHAR(64) DEFAULT NULL COMMENT '差异明细编号',
+    merchant_no VARCHAR(32) DEFAULT NULL COMMENT '商户号',
+    pay_channel VARCHAR(32) DEFAULT NULL COMMENT '支付渠道',
+    diff_type INT DEFAULT NULL COMMENT '差异类型',
+    diff_amount DECIMAL(12,2) DEFAULT NULL COMMENT '差异金额',
+    writeoff_amount DECIMAL(12,2) DEFAULT NULL COMMENT '平账金额',
+    writeoff_type INT NOT NULL COMMENT '平账类型：1补单 2退款 3调账 4忽略',
+    writeoff_source INT NOT NULL DEFAULT 1 COMMENT '平账来源：1自动 2手动',
+    rule_id BIGINT DEFAULT NULL COMMENT '匹配的自动平账规则ID',
+    rule_name VARCHAR(128) DEFAULT NULL COMMENT '匹配的自动平账规则名称',
+    writeoff_status INT NOT NULL DEFAULT 0 COMMENT '平账状态：0待执行 1执行中 2成功 3失败',
+    error_order_no VARCHAR(64) DEFAULT NULL COMMENT '关联差错单号',
+    order_no VARCHAR(64) DEFAULT NULL COMMENT '平台订单号',
+    channel_trade_no VARCHAR(64) DEFAULT NULL COMMENT '渠道交易号',
+    writeoff_remark VARCHAR(512) DEFAULT NULL COMMENT '平账备注',
+    execute_time DATETIME DEFAULT NULL COMMENT '执行时间',
+    execute_result VARCHAR(512) DEFAULT NULL COMMENT '执行结果',
+    operator_id VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
+    operator_name VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_reconcile_no (reconcile_no),
+    INDEX idx_detail_id (detail_id),
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_writeoff_status (writeoff_status),
+    INDEX idx_writeoff_source (writeoff_source),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对账补账记录表';
