@@ -36,6 +36,7 @@ const PayLinkManage = lazy(() => import('@/pages/PayLinkManage'));
 const CouponManage = lazy(() => import('@/pages/CouponManage'));
 const ActivityConfig = lazy(() => import('@/pages/ActivityConfig'));
 const PayLinkH5 = lazy(() => import('@/pages/PayLinkH5'));
+const SplitReceiver = lazy(() => import('@/pages/SplitReceiver'));
 
 export interface RouteConfigItem {
   path: string;
@@ -118,6 +119,11 @@ export const routesConfig: RouteConfigItem[] = [
         path: 'report',
         name: '报表订阅',
         element: <ReportSubscription />,
+      },
+      {
+        path: 'split-receiver',
+        name: '分账接收方',
+        element: <SplitReceiver />,
       },
     ],
   },

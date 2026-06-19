@@ -34,6 +34,9 @@ public class SplitEngineServiceImpl extends ServiceImpl<PaySplitDetailMapper, Pa
     @Autowired
     private SplitRuleService splitRuleService;
 
+    @Autowired(required = false)
+    private SplitReceiverService splitReceiverService;
+
     @Override
     public List<PaySplitDetail> calculateSplit(PayOrder order, PaySplitRule rule) {
         List<PaySplitDetail> details = new ArrayList<>();
@@ -63,6 +66,16 @@ public class SplitEngineServiceImpl extends ServiceImpl<PaySplitDetailMapper, Pa
             if (receiverAccount == null || splitType == null || splitValue == null) {
                 log.warn("分账明细项参数不完整, 跳过: {}", item);
                 continue;
+            }
+
+            if (splitReceiverService != null && !"REMAINING".equalsIgnoreCase(splitType)) {
+                try {
+                    splitReceiverService.checkReceiverVerified(receiverAccount, order.getMerchantNo());
+                } catch (BusinessException e) {
+                    log.error("分账接收方未通过实名认证校验, receiverAccount={}, error={}", receiverAccount, e.getMessage());
+                    throw new BusinessException(ResultCode.PARAM_ERROR,
+                            "分账接收方[" + (receiverName != null ? receiverName : receiverAccount) + "]未完成实名认证: " + e.getMessage());
+                }
             }
 
             PaySplitDetail detail = new PaySplitDetail();

@@ -16,3 +16,4 @@ export { agentRelationApi, agentProfitRuleApi, agentProfitApi, agentWithdrawApi 
 export { invoiceApi } from './invoice';
 export { reportApi } from './report';
 export { payLinkApi, payLinkPublicApi, couponApi, activityApi } from './marketing';
+export { splitReceiverApi } from './splitReceiver';

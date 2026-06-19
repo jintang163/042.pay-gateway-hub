@@ -688,3 +688,99 @@ INSERT INTO activity (activity_code, merchant_no, activity_name, activity_type, 
 VALUES
 ('ACT000001', 'M000001', '春季满减活动', 1, 100.00, 10.00, NULL, NULL, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_ADD(NOW(), INTERVAL 30 DAY), 1, '沙箱示例-满100减10', NOW(), NOW()),
 ('ACT000002', 'M000001', '夏季折扣季', 2, 200.00, NULL, 8.00, 100.00, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_ADD(NOW(), INTERVAL 60 DAY), 1, '沙箱示例-8折封顶100', NOW(), NOW());
+
+-- =====================================================
+-- 分账接收方实名认证表
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS split_receiver (
+    id                BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    receiver_no       VARCHAR(32)   NOT NULL COMMENT '接收方编号',
+    merchant_no       VARCHAR(32)   NOT NULL COMMENT '所属商户号',
+    receiver_name     VARCHAR(100)  NOT NULL COMMENT '接收方姓名/企业名',
+    receiver_type     INT           NOT NULL COMMENT '接收方类型：1个人 2企业',
+    id_card_no        VARCHAR(64)   NOT NULL COMMENT '身份证号/统一社会信用代码',
+    id_card_name      VARCHAR(100)  NOT NULL COMMENT '证件姓名/企业法人姓名',
+    bank_card_no      VARCHAR(64)   NOT NULL COMMENT '银行卡号',
+    bank_phone        VARCHAR(32)   NOT NULL COMMENT '银行预留手机号',
+    bank_name         VARCHAR(100)  NOT NULL COMMENT '开户银行',
+    bank_branch_name  VARCHAR(200)  DEFAULT NULL COMMENT '开户支行',
+    verify_status     INT           DEFAULT 0 COMMENT '认证状态：0未认证 1认证中 2已认证 3认证失败',
+    verify_channel    INT           DEFAULT NULL COMMENT '认证渠道：1银行卡四要素 2银行卡三要素 3人脸识别',
+    verify_time       DATETIME      DEFAULT NULL COMMENT '最近认证时间',
+    verify_fail_reason VARCHAR(500) DEFAULT NULL COMMENT '认证失败原因',
+    verify_request_id VARCHAR(64)   DEFAULT NULL COMMENT '认证请求流水号',
+    contact_name      VARCHAR(64)   DEFAULT NULL COMMENT '联系人姓名',
+    contact_phone     VARCHAR(32)   DEFAULT NULL COMMENT '联系人电话',
+    contact_email     VARCHAR(128)  DEFAULT NULL COMMENT '联系人邮箱',
+    status            INT           DEFAULT 1 COMMENT '状态：1启用 0禁用',
+    remark            VARCHAR(500)  DEFAULT NULL COMMENT '备注',
+    operator_id       VARCHAR(32)   DEFAULT NULL COMMENT '操作人ID',
+    operator_name     VARCHAR(64)   DEFAULT NULL COMMENT '操作人姓名',
+    created_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted           INT           DEFAULT 0 COMMENT '删除标志',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_receiver_no (receiver_no),
+    KEY idx_merchant_no (merchant_no),
+    KEY idx_verify_status (verify_status),
+    KEY idx_status (status),
+    KEY idx_id_card_no (id_card_no),
+    KEY idx_bank_card_no (bank_card_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分账接收方表';
+
+CREATE TABLE IF NOT EXISTS split_receiver_verify_log (
+    id                BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    log_no            VARCHAR(32)   NOT NULL COMMENT '日志编号',
+    merchant_no       VARCHAR(32)   NOT NULL COMMENT '商户号',
+    receiver_no       VARCHAR(32)   NOT NULL COMMENT '接收方编号',
+    verify_channel    INT           DEFAULT NULL COMMENT '认证渠道：1银行卡四要素 2银行卡三要素 3人脸识别',
+    verify_request_id VARCHAR(64)   DEFAULT NULL COMMENT '认证请求流水号',
+    id_card_name      VARCHAR(100)  DEFAULT NULL COMMENT '证件姓名',
+    id_card_no        VARCHAR(64)   DEFAULT NULL COMMENT '证件号码',
+    bank_card_no      VARCHAR(64)   DEFAULT NULL COMMENT '银行卡号',
+    bank_phone        VARCHAR(32)   DEFAULT NULL COMMENT '预留手机号',
+    verify_status     INT           DEFAULT NULL COMMENT '认证结果：1成功 2失败 3处理中',
+    verify_result     VARCHAR(500)  DEFAULT NULL COMMENT '认证结果描述',
+    verify_fail_code  VARCHAR(64)   DEFAULT NULL COMMENT '认证失败错误码',
+    verify_fail_reason VARCHAR(500) DEFAULT NULL COMMENT '认证失败原因',
+    verify_time       DATETIME      DEFAULT NULL COMMENT '认证时间',
+    request_data      TEXT          DEFAULT NULL COMMENT '请求原始数据(JSON)',
+    response_data     TEXT          DEFAULT NULL COMMENT '响应原始数据(JSON)',
+    operator_id       VARCHAR(32)   DEFAULT NULL COMMENT '操作人ID',
+    operator_name     VARCHAR(64)   DEFAULT NULL COMMENT '操作人姓名',
+    created_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_log_no (log_no),
+    KEY idx_merchant_no (merchant_no),
+    KEY idx_receiver_no (receiver_no),
+    KEY idx_verify_request_id (verify_request_id),
+    KEY idx_verify_status (verify_status),
+    KEY idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分账接收方实名认证记录表';
+
+-- =====================================================
+-- 分账接收方初始化数据（沙箱）
+-- =====================================================
+
+INSERT INTO split_receiver (receiver_no, merchant_no, receiver_name, receiver_type, id_card_no, id_card_name,
+                             bank_card_no, bank_phone, bank_name, bank_branch_name,
+                             verify_status, verify_channel, verify_time, verify_request_id,
+                             contact_name, contact_phone, contact_email, status, remark,
+                             operator_id, operator_name, created_at, updated_at)
+VALUES
+('RE000001', 'M000001', '张三供应商', 1, '110101199001011234', '张三',
+ '6222021234567890000', '13800138000', '中国工商银行', '北京朝阳支行',
+ 2, 1, NOW(), 'VR202501010001',
+ '张三', '13800138000', 'zhangsan@example.com', 1, '沙箱示例-已认证个人接收方',
+ 'admin', '系统管理员', NOW(), NOW()),
+('RE000002', 'M000001', '李四服务商', 1, '310101199203035678', '李四',
+ '6227009876543219999', '13900139000', '中国建设银行', '上海浦东支行',
+ 3, 1, NOW(), 'VR202501010002',
+ '李四', '13900139000', 'lisi@example.com', 1, '沙箱示例-认证失败接收方（测试）',
+ 'admin', '系统管理员', NOW(), NOW()),
+('RE000003', 'M000001', '王五工作室', 1, '440101199505059012', '王五',
+ '6228481122334455678', '13700137000', '中国农业银行', '广州天河支行',
+ 0, NULL, NULL, NULL,
+ '王五', '13700137000', 'wangwu@example.com', 1, '沙箱示例-未认证接收方',
+ 'admin', '系统管理员', NOW(), NOW());

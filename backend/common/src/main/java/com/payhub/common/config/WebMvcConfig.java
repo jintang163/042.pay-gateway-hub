@@ -81,7 +81,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/report/**",
                         "/api/pay-link/**",
                         "/api/coupon/**",
-                        "/api/activity/**"
+                        "/api/activity/**",
+                        "/api/split-receiver/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",
