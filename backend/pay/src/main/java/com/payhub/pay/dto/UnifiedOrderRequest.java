@@ -46,4 +46,10 @@ public class UnifiedOrderRequest extends SignBaseDTO implements Serializable {
     private String extraParams;
 
     private String clientIp;
+
+    private String linkCode;
+
+    private String couponCode;
+
+    private String activityCode;
 }

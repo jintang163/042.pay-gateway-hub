@@ -78,7 +78,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/reconcile/**",
                         "/api/agent/**",
                         "/api/invoice/**",
-                        "/api/report/**"
+                        "/api/report/**",
+                        "/api/pay-link/**",
+                        "/api/coupon/**",
+                        "/api/activity/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",
@@ -86,7 +89,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/merchant/apply",
                         "/api/pay/notify/**",
                         "/api/pay/callback/**",
-                        "/api/invoice/notify/**"
+                        "/api/invoice/notify/**",
+                        "/api/pay-link/resolve/**",
+                        "/api/coupon/calculate-discount",
+                        "/api/public/**"
                 )
                 .order(3);
     }

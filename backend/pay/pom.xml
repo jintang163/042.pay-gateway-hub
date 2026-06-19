@@ -39,5 +39,10 @@
             <groupId>com.payhub</groupId>
             <artifactId>settlement</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>com.payhub</groupId>
+            <artifactId>marketing</artifactId>
+        </dependency>
     </dependencies>
 </project>

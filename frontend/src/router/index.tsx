@@ -35,6 +35,7 @@ const ReportSubscription = lazy(() => import('@/pages/ReportSubscription'));
 const PayLinkManage = lazy(() => import('@/pages/PayLinkManage'));
 const CouponManage = lazy(() => import('@/pages/CouponManage'));
 const ActivityConfig = lazy(() => import('@/pages/ActivityConfig'));
+const PayLinkH5 = lazy(() => import('@/pages/PayLinkH5'));
 
 export interface RouteConfigItem {
   path: string;
@@ -251,6 +252,12 @@ export const publicRoutes: RouteConfigItem[] = [
     element: <PaymentPageH5 />,
     hidden: true,
   },
+  {
+    path: 'h5/pay-link/:linkCode',
+    name: '支付链接',
+    element: <PayLinkH5 />,
+    hidden: true,
+  },
 ];
 
 export const findBreadcrumb = (
@@ -339,6 +346,10 @@ const AppRouter = () => {
         <Route
           path="/h5/payment/:merchantNo"
           element={<PaymentPageH5 />}
+        />
+        <Route
+          path="/h5/pay-link/:linkCode"
+          element={<PayLinkH5 />}
         />
         <Route
           path="/*"

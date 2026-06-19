@@ -40,6 +40,20 @@ export const payLinkApi = {
   resolve: (linkCode: string) => {
     return request.get<PayLink>(`/pay-link/resolve/${linkCode}`);
   },
+
+  createOrder: (data: { linkCode: string; payAmount?: number; payChannel?: string; couponCode?: string; activityCode?: string }) => {
+    return request.post<any>(`/pay-link/order`, data);
+  },
+};
+
+export const payLinkPublicApi = {
+  getInfo: (linkCode: string) => {
+    return request.get<PayLink>(`/public/pay-link/info/${linkCode}`);
+  },
+
+  createOrder: (data: { linkCode: string; payAmount?: number; payChannel?: string; couponCode?: string; activityCode?: string }) => {
+    return request.post<any>(`/public/pay-link/order`, data);
+  },
 };
 
 export const couponApi = {

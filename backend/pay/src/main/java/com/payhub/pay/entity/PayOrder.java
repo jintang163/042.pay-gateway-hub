@@ -22,7 +22,17 @@ public class PayOrder implements Serializable {
 
     private String merchantOrderNo;
 
+    private String linkCode;
+
+    private String couponCode;
+
+    private String activityCode;
+
     private BigDecimal payAmount;
+
+    private BigDecimal couponDiscount;
+
+    private BigDecimal activityDiscount;
 
     private BigDecimal actualAmount;
 

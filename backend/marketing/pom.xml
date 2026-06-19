@@ -24,10 +24,5 @@
             <groupId>com.payhub</groupId>
             <artifactId>merchant</artifactId>
         </dependency>
-
-        <dependency>
-            <groupId>com.payhub</groupId>
-            <artifactId>pay</artifactId>
-        </dependency>
     </dependencies>
 </project>

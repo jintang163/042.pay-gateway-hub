@@ -34,6 +34,8 @@ import com.payhub.pay.service.PayRouterService;
 import com.payhub.risk.dto.RiskCheckRequest;
 import com.payhub.risk.dto.RiskCheckResult;
 import com.payhub.risk.service.RiskControlService;
+import com.payhub.marketing.service.MarketingDiscountService;
+import com.payhub.marketing.dto.CouponDiscountCalcResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -80,6 +82,9 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
     @Autowired(required = false)
     private RiskControlService riskControlService;
 
+    @Autowired(required = false)
+    private MarketingDiscountService marketingDiscountService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UnifiedOrderResponse unifiedOrder(UnifiedOrderRequest request) {
@@ -109,34 +114,78 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
 
         String orderNo = OrderNoGenerator.generate();
 
+        BigDecimal couponDiscount = BigDecimal.ZERO;
+        BigDecimal activityDiscount = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        if (marketingDiscountService != null) {
+            if (StrUtil.isNotBlank(request.getCouponCode())) {
+                try {
+                    CouponDiscountCalcResult couponResult = marketingDiscountService.calcCouponDiscount(
+                            request.getCouponCode(), request.getMerchantNo(), request.getPayAmount());
+                    couponDiscount = couponResult.getDiscountAmount();
+                    log.info("优惠券抵扣计算成功: couponCode={}, orderAmount={}, discountAmount={}",
+                            request.getCouponCode(), request.getPayAmount(), couponDiscount);
+                } catch (Exception e) {
+                    log.warn("优惠券抵扣计算失败，忽略优惠券: couponCode={}, error={}", request.getCouponCode(), e.getMessage());
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "优惠券不可用: " + e.getMessage());
+                }
+            }
+            if (StrUtil.isNotBlank(request.getActivityCode())) {
+                try {
+                    activityDiscount = marketingDiscountService.calcActivityDiscount(
+                            request.getActivityCode(), request.getMerchantNo(), request.getPayAmount());
+                    log.info("活动优惠计算成功: activityCode={}, orderAmount={}, discountAmount={}",
+                            request.getActivityCode(), request.getPayAmount(), activityDiscount);
+                } catch (Exception e) {
+                    log.warn("活动优惠计算失败，忽略活动: activityCode={}, error={}", request.getActivityCode(), e.getMessage());
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "活动不可用: " + e.getMessage());
+                }
+            }
+        }
+
+        discountAmount = couponDiscount.add(activityDiscount);
+        if (discountAmount.compareTo(request.getPayAmount()) > 0) {
+            discountAmount = request.getPayAmount();
+        }
+        BigDecimal payableAmount = request.getPayAmount().subtract(discountAmount);
+        if (payableAmount.compareTo(BigDecimal.ZERO) < 0) {
+            payableAmount = BigDecimal.ZERO;
+        }
+
         BigDecimal feeAmount;
         if (feeRuleService != null) {
             try {
                 FeeCalcRequest calcRequest = new FeeCalcRequest();
                 calcRequest.setMerchantNo(request.getMerchantNo());
                 calcRequest.setPayChannel(config.getPayChannel());
-                calcRequest.setAmount(request.getPayAmount());
+                calcRequest.setAmount(payableAmount);
                 FeeCalcResult calcResult = feeRuleService.calculate(calcRequest);
                 feeAmount = calcResult.getFeeAmount();
                 log.info("动态费率计算完成: merchantNo={}, amount={}, channel={}, feeAmount={}, ruleNo={}",
-                        request.getMerchantNo(), request.getPayAmount(), config.getPayChannel(),
+                        request.getMerchantNo(), payableAmount, config.getPayChannel(),
                         feeAmount, calcResult.getRuleNo());
             } catch (Exception e) {
                 log.warn("动态费率计算失败，回退到配置固定费率: merchantNo={}, error={}",
                         request.getMerchantNo(), e.getMessage());
-                feeAmount = calculateFee(request.getPayAmount(), config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+                feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
             }
         } else {
-            feeAmount = calculateFee(request.getPayAmount(), config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+            feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
         }
 
-        BigDecimal actualAmount = request.getPayAmount().subtract(feeAmount);
+        BigDecimal actualAmount = payableAmount.subtract(feeAmount);
 
         PayOrder order = new PayOrder();
         order.setOrderNo(orderNo);
         order.setMerchantNo(request.getMerchantNo());
         order.setMerchantOrderNo(request.getMerchantOrderNo());
+        order.setLinkCode(request.getLinkCode());
+        order.setCouponCode(request.getCouponCode());
+        order.setActivityCode(request.getActivityCode());
         order.setPayAmount(request.getPayAmount());
+        order.setCouponDiscount(couponDiscount);
+        order.setActivityDiscount(activityDiscount);
         order.setActualAmount(actualAmount);
         order.setFeeAmount(feeAmount);
         order.setPayChannel(config.getChannelCode());
@@ -423,6 +472,36 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
                     log.info("代理分润计算触发成功, orderNo={}", order.getOrderNo());
                 } catch (Exception e) {
                     log.error("代理分润计算触发失败, orderNo={}", order.getOrderNo(), e);
+                }
+            }
+
+            if (marketingDiscountService != null) {
+                if (StrUtil.isNotBlank(order.getCouponCode())) {
+                    try {
+                        marketingDiscountService.recordCouponUse(
+                                order.getOrderNo(),
+                                order.getMerchantNo(),
+                                order.getCouponCode(),
+                                order.getPayAmount(),
+                                order.getCouponDiscount(),
+                                order.getUserIdentity()
+                        );
+                        log.info("支付成功-优惠券核销完成, orderNo={}, couponCode={}",
+                                order.getOrderNo(), order.getCouponCode());
+                    } catch (Exception e) {
+                        log.error("支付成功-优惠券核销失败, orderNo={}, couponCode={}",
+                                order.getOrderNo(), order.getCouponCode(), e);
+                    }
+                }
+                if (StrUtil.isNotBlank(order.getLinkCode())) {
+                    try {
+                        marketingDiscountService.incrementPayLinkUsed(order.getLinkCode());
+                        log.info("支付成功-支付链接使用次数+1, orderNo={}, linkCode={}",
+                                order.getOrderNo(), order.getLinkCode());
+                    } catch (Exception e) {
+                        log.error("支付成功-支付链接使用次数递增失败, orderNo={}, linkCode={}",
+                                order.getOrderNo(), order.getLinkCode(), e);
+                    }
                 }
             }
         } else if ("FAIL".equalsIgnoreCase(notifyResult.getPayStatus())
