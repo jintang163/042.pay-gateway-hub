@@ -37,6 +37,11 @@
 
         <dependency>
             <groupId>com.payhub</groupId>
+            <artifactId>invoice</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.payhub</groupId>
             <artifactId>settlement</artifactId>
         </dependency>
 

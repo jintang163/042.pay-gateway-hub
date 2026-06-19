@@ -30,6 +30,7 @@ const SubordinateMerchant = lazy(() => import('@/pages/SubordinateMerchant'));
 const AgentProfitRule = lazy(() => import('@/pages/AgentProfitRule'));
 const AgentProfit = lazy(() => import('@/pages/AgentProfit'));
 const AgentWithdraw = lazy(() => import('@/pages/AgentWithdraw'));
+const InvoiceList = lazy(() => import('@/pages/InvoiceList'));
 
 export interface RouteConfigItem {
   path: string;
@@ -85,6 +86,11 @@ export const routesConfig: RouteConfigItem[] = [
         path: 'refund',
         name: '退款列表',
         element: <RefundList />,
+      },
+      {
+        path: 'invoice',
+        name: '发票管理',
+        element: <InvoiceList />,
       },
     ],
   },

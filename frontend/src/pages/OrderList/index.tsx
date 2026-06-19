@@ -42,12 +42,14 @@ import {
   StopOutlined,
   SafetyOutlined,
   FundProjectionScreenOutlined,
+  FileInvoiceOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { orderApi } from '@/api';
 import type { Order, OrderQueryParams, RefundApplyRequest, OrderAttributionVO } from '@/types/order';
 import { formatAmount, formatDateTime } from '@/utils';
+import { InvoiceApplyModal } from '@/components';
 
 const { RangePicker } = DatePicker;
 const { Panel } = Collapse;
@@ -119,6 +121,8 @@ const OrderList = () => {
   const [submitting, setSubmitting] = useState(false);
   const [attribution, setAttribution] = useState<OrderAttributionVO | null>(null);
   const [attributionLoading, setAttributionLoading] = useState(false);
+  const [invoiceApplyVisible, setInvoiceApplyVisible] = useState(false);
+  const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<any>(null);
 
   const fetchData = async (
     page = pagination.current,
@@ -243,6 +247,19 @@ const OrderList = () => {
     }
   };
 
+  const handleOpenInvoiceApply = (record: any) => {
+    if (record.payStatus !== 1) {
+      message.warning('只有支付成功的订单才能申请发票');
+      return;
+    }
+    setSelectedOrderForInvoice({
+      orderNo: record.orderNo,
+      payAmount: record.payAmount ?? record.amount,
+      productSubject: record.productSubject ?? record.subject,
+    });
+    setInvoiceApplyVisible(true);
+  };
+
   const renderFailBadge = (record: any) => {
     if (record.payStatus !== 2 && record.payStatus !== 3) return null;
     return (
@@ -329,7 +346,7 @@ const OrderList = () => {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
         <Space>
@@ -337,16 +354,21 @@ const OrderList = () => {
             详情
           </Button>
           {record.payStatus === 1 && (
-            <Popconfirm
-              title="确认申请退款？"
-              onConfirm={() => handleOpenRefund(record)}
-              okText="确认"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<RedoOutlined />}>
-                退款
+            <>
+              <Button type="link" size="small" icon={<FileInvoiceOutlined />} onClick={() => handleOpenInvoiceApply(record)}>
+                开发票
               </Button>
-            </Popconfirm>
+              <Popconfirm
+                title="确认申请退款？"
+                onConfirm={() => handleOpenRefund(record)}
+                okText="确认"
+                cancelText="取消"
+              >
+                <Button type="link" size="small" danger icon={<RedoOutlined />}>
+                  退款
+                </Button>
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -693,6 +715,15 @@ const OrderList = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <InvoiceApplyModal
+        visible={invoiceApplyVisible}
+        onClose={() => setInvoiceApplyVisible(false)}
+        onSuccess={() => {
+          message.success('发票申请已提交');
+        }}
+        orderInfo={selectedOrderForInvoice}
+      />
     </div>
   );
 };

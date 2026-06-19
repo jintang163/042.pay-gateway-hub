@@ -16,3 +16,5 @@ export { default as FormModal } from './FormModal';
 export type { FormModalHandle, FormField, FormSection, FormModalProps } from './FormModal';
 
 export { default as PaymentPagePreview } from './PaymentPagePreview';
+
+export { default as InvoiceApplyModal } from './InvoiceApplyModal';

@@ -23,6 +23,7 @@
         <module>merchant</module>
         <module>channel</module>
         <module>pay</module>
+        <module>invoice</module>
         <module>settlement</module>
         <module>risk</module>
         <module>admin</module>
@@ -109,6 +110,12 @@
             <dependency>
                 <groupId>com.payhub</groupId>
                 <artifactId>pay</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.payhub</groupId>
+                <artifactId>invoice</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
