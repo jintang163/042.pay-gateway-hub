@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,10 +57,19 @@ public class ReportPushServiceImpl implements ReportPushService {
     private static final int PUSH_STATUS_SUCCESS = 2;
     private static final int PUSH_STATUS_FAIL = 3;
 
+    private static final int SETTLE_STATUS_PENDING = 0;
+    private static final int SETTLE_STATUS_PROCESSING = 1;
+    private static final int SETTLE_STATUS_SUCCESS = 2;
+    private static final int SETTLE_STATUS_FAIL = 3;
+
     private static final int TRIGGER_SCHEDULED = 1;
     private static final int TRIGGER_MANUAL = 2;
 
+    private static final int REPORT_TYPE_DAILY = 1;
+    private static final int REPORT_TYPE_WEEKLY = 2;
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter HM_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -74,11 +84,115 @@ public class ReportPushServiceImpl implements ReportPushService {
     }
 
     @Override
+    public void dispatchScheduledPushes() {
+        LocalDateTime now = LocalDateTime.now();
+        String currentHm = now.format(HM_FMT);
+        LocalDate today = now.toLocalDate();
+
+        log.debug("开始扫描报表订阅调度: 当前时间={}", currentHm);
+
+        LambdaQueryWrapper<ReportSubscription> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ReportSubscription::getEnabled, 1);
+        List<ReportSubscription> subscriptions = reportSubscriptionService.list(wrapper);
+
+        int triggered = 0;
+        int skipped = 0;
+
+        for (ReportSubscription sub : subscriptions) {
+            try {
+                if (!isTimeToPush(sub, currentHm, today)) {
+                    skipped++;
+                    continue;
+                }
+
+                LocalDate endDate = today.minusDays(1);
+                LocalDate startDate;
+                if (REPORT_TYPE_DAILY == sub.getReportType()) {
+                    startDate = endDate;
+                } else if (REPORT_TYPE_WEEKLY == sub.getReportType()) {
+                    startDate = endDate.minusDays(6);
+                } else {
+                    continue;
+                }
+
+                if (!isSettlementCompleted(sub.getMerchantNo(), startDate, endDate)) {
+                    log.info("订阅[{}]商户[{}]报表周期[{}~{}]结算未全部打款完成，暂不推送",
+                            sub.getSubscriptionNo(), sub.getMerchantNo(), startDate, endDate);
+                    skipped++;
+                    continue;
+                }
+
+                if (hasPushedForPeriod(sub.getSubscriptionNo(), startDate, endDate)) {
+                    log.debug("订阅[{}]商户[{}]周期[{}~{}]已推送过，跳过重复推送",
+                            sub.getSubscriptionNo(), sub.getMerchantNo(), startDate, endDate);
+                    skipped++;
+                    continue;
+                }
+
+                log.info("调度触发推送: subscriptionNo={}, merchantNo={}, reportType={}, 周期={}~{}",
+                        sub.getSubscriptionNo(), sub.getMerchantNo(),
+                        REPORT_TYPE_DAILY == sub.getReportType() ? "日报" : "周报",
+                        startDate, endDate);
+
+                processPush(sub, TRIGGER_SCHEDULED);
+                triggered++;
+            } catch (Exception e) {
+                log.error("调度推送异常: subscriptionNo={}, merchantNo={}, error={}",
+                        sub.getSubscriptionNo(), sub.getMerchantNo(), e.getMessage(), e);
+            }
+        }
+
+        if (triggered > 0 || skipped > 0) {
+            log.debug("报表订阅调度扫描完成: 触发={}, 跳过={}, 总计={}", triggered, skipped, subscriptions.size());
+        }
+    }
+
+    private boolean isTimeToPush(ReportSubscription sub, String currentHm, LocalDate today) {
+        if (sub.getPushTime() == null || sub.getPushTime().trim().isEmpty()) {
+            return false;
+        }
+        String subHm = sub.getPushTime().trim();
+        if (!subHm.equals(currentHm)) {
+            return false;
+        }
+        if (REPORT_TYPE_DAILY == sub.getReportType()) {
+            return true;
+        }
+        if (REPORT_TYPE_WEEKLY == sub.getReportType()) {
+            return DayOfWeek.MONDAY.equals(today.getDayOfWeek());
+        }
+        return false;
+    }
+
+    private boolean isSettlementCompleted(String merchantNo, LocalDate startDate, LocalDate endDate) {
+        LambdaQueryWrapper<SettlementRecord> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SettlementRecord::getMerchantNo, merchantNo)
+                .between(SettlementRecord::getSettleDate, startDate, endDate)
+                .in(SettlementRecord::getSettleStatus, SETTLE_STATUS_PENDING, SETTLE_STATUS_PROCESSING);
+        Long pendingCount = settlementRecordMapper.selectCount(wrapper);
+        boolean completed = pendingCount == null || pendingCount == 0;
+        log.debug("商户[{}]周期[{}~{}]结算完成检查: pendingCount={}, completed={}",
+                merchantNo, startDate, endDate, pendingCount, completed);
+        return completed;
+    }
+
+    private boolean hasPushedForPeriod(String subscriptionNo, LocalDate startDate, LocalDate endDate) {
+        LambdaQueryWrapper<ReportPushRecord> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ReportPushRecord::getSubscriptionNo, subscriptionNo)
+                .eq(ReportPushRecord::getStartDate, startDate)
+                .eq(ReportPushRecord::getEndDate, endDate)
+                .eq(ReportPushRecord::getTriggerType, TRIGGER_SCHEDULED)
+                .in(ReportPushRecord::getPushStatus, PUSH_STATUS_PROCESSING, PUSH_STATUS_SUCCESS);
+        Long count = reportPushRecordMapper.selectCount(wrapper);
+        return count != null && count > 0;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void triggerDailyReportPush() {
-        log.info("========== 开始执行日报推送任务 ==========");
+        log.info("========== 开始执行日报推送任务（批量触发） ==========");
         LambdaQueryWrapper<ReportSubscription> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ReportSubscription::getReportType, 1)
+        wrapper.eq(ReportSubscription::getReportType, REPORT_TYPE_DAILY)
                 .eq(ReportSubscription::getEnabled, 1);
         List<ReportSubscription> subscriptions = reportSubscriptionService.list(wrapper);
         log.info("查询到启用的日报订阅数量: {}", subscriptions.size());
@@ -102,9 +216,9 @@ public class ReportPushServiceImpl implements ReportPushService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void triggerWeeklyReportPush() {
-        log.info("========== 开始执行周报推送任务 ==========");
+        log.info("========== 开始执行周报推送任务（批量触发） ==========");
         LambdaQueryWrapper<ReportSubscription> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ReportSubscription::getReportType, 2)
+        wrapper.eq(ReportSubscription::getReportType, REPORT_TYPE_WEEKLY)
                 .eq(ReportSubscription::getEnabled, 1);
         List<ReportSubscription> subscriptions = reportSubscriptionService.list(wrapper);
         log.info("查询到启用的周报订阅数量: {}", subscriptions.size());
@@ -128,7 +242,7 @@ public class ReportPushServiceImpl implements ReportPushService {
     private void processPush(ReportSubscription subscription, Integer triggerType) {
         log.info("开始处理报表推送: subscriptionNo={}, merchantNo={}, reportType={}",
                 subscription.getSubscriptionNo(), subscription.getMerchantNo(),
-                subscription.getReportType() == 1 ? "日报" : "周报");
+                REPORT_TYPE_DAILY == subscription.getReportType() ? "日报" : (REPORT_TYPE_WEEKLY == subscription.getReportType() ? "周报" : "未知"));
 
         ReportPushRecord record = new ReportPushRecord();
         record.setRecordNo(OrderNoGenerator.generateWithPrefix("RP"));
@@ -147,12 +261,12 @@ public class ReportPushServiceImpl implements ReportPushService {
         LocalDate endDate = LocalDate.now().minusDays(1);
         LocalDate startDate;
         String reportTypeText;
-        if (subscription.getReportType() == 1) {
+        if (REPORT_TYPE_DAILY == subscription.getReportType()) {
             startDate = endDate;
             reportTypeText = "日报";
             record.setReportTitle(endDate.toString() + " 结算日报");
             record.setReportPeriod(endDate.toString());
-        } else if (subscription.getReportType() == 2) {
+        } else if (REPORT_TYPE_WEEKLY == subscription.getReportType()) {
             startDate = endDate.minusDays(6);
             reportTypeText = "周报";
             record.setReportTitle(startDate.toString() + " 至 " + endDate.toString() + " 结算周报");
@@ -188,7 +302,7 @@ public class ReportPushServiceImpl implements ReportPushService {
                     endDate,
                     settlementRecords
             );
-            String fileName = String.format("结算报表_%s_%s-%s.html",
+            String fileName = String.format("结算报表_%s_%s-%s.pdf",
                     subscription.getMerchantNo(),
                     startDate.format(DATE_FMT),
                     endDate.format(DATE_FMT));

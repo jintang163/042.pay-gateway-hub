@@ -7,4 +7,6 @@ public interface ReportPushService {
     void triggerDailyReportPush();
 
     void triggerWeeklyReportPush();
+
+    void dispatchScheduledPushes();
 }

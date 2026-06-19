@@ -78,25 +78,13 @@ public class ScheduleConfig {
         }
     }
 
-    @Scheduled(cron = "0 0 8 * * ?")
-    public void dailyReportPushTask() {
-        log.info("定时任务：开始执行日报推送任务");
+    @Scheduled(cron = "0 * * * * ?")
+    public void reportPushDispatchTask() {
+        log.debug("定时任务：报表推送调度检查");
         try {
-            reportPushService.triggerDailyReportPush();
-            log.info("定时任务：日报推送任务执行完成");
+            reportPushService.dispatchScheduledPushes();
         } catch (Exception e) {
-            log.error("定时任务：日报推送任务执行异常", e);
-        }
-    }
-
-    @Scheduled(cron = "0 0 9 ? * MON")
-    public void weeklyReportPushTask() {
-        log.info("定时任务：开始执行周报推送任务");
-        try {
-            reportPushService.triggerWeeklyReportPush();
-            log.info("定时任务：周报推送任务执行完成");
-        } catch (Exception e) {
-            log.error("定时任务：周报推送任务执行异常", e);
+            log.error("定时任务：报表推送调度检查异常", e);
         }
     }
 }

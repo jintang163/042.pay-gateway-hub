@@ -43,6 +43,7 @@
         <commons-lang3.version>3.14.0</commons-lang3.version>
         <commons-codec.version>1.16.0</commons-codec.version>
         <drools.version>7.74.1.Final</drools.version>
+        <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
     </properties>
 
     <dependencyManagement>
@@ -153,6 +154,18 @@
                 <groupId>org.kie</groupId>
                 <artifactId>kie-internal</artifactId>
                 <version>${drools.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.openhtmltopdf</groupId>
+                <artifactId>openhtmltopdf-pdfbox</artifactId>
+                <version>${openhtmltopdf.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.openhtmltopdf</groupId>
+                <artifactId>openhtmltopdf-java2d</artifactId>
+                <version>${openhtmltopdf.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

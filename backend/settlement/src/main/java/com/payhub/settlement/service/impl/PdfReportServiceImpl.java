@@ -1,6 +1,7 @@
 package com.payhub.settlement.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.settlement.entity.SettlementRecord;
@@ -9,7 +10,13 @@ import com.payhub.settlement.service.PdfReportService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -102,7 +109,37 @@ public class PdfReportServiceImpl implements PdfReportService {
 
         log.info("报表HTML生成完成, 长度={} 字符", html.length());
 
-        return html.getBytes(StandardCharsets.UTF_8);
+        return htmlToPdfBytes(html);
+    }
+
+    private byte[] htmlToPdfBytes(String html) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            DocumentBuilder docBuilder = factory.newDocumentBuilder();
+            ByteArrayInputStream bais = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
+            InputSource is = new InputSource(bais);
+            is.setEncoding("UTF-8");
+            Document w3cDoc = docBuilder.parse(is);
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+            PdfRendererBuilder pdfBuilder = new PdfRendererBuilder();
+            pdfBuilder.useFastMode();
+            pdfBuilder.withW3cDocument(w3cDoc, null);
+            pdfBuilder.toStream(baos);
+            pdfBuilder.run();
+
+            byte[] pdfBytes = baos.toByteArray();
+            log.info("PDF 生成成功, PDF 大小: {} bytes ({} KB)", pdfBytes.length, String.format("%.2f", pdfBytes.length / 1024.0));
+            return pdfBytes;
+        } catch (Exception e) {
+            log.error("HTML转PDF失败: {}", e.getMessage(), e);
+            throw new RuntimeException("PDF生成失败: " + e.getMessage(), e);
+        }
     }
 
     private String buildSettlementReportHtml(String merchantNo, String merchantName,
@@ -114,46 +151,39 @@ public class PdfReportServiceImpl implements PdfReportService {
         html.append("<html lang=\"zh-CN\">\n");
         html.append("<head>\n");
         html.append("    <meta charset=\"UTF-8\">\n");
-        html.append("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
         html.append("    <title>商户结算报表</title>\n");
         html.append("    <style>\n");
+        html.append("        @page { size: A4; margin: 20mm; }\n");
         html.append("        * { margin: 0; padding: 0; box-sizing: border-box; }\n");
-        html.append("        body { font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif; padding: 30px; background: #f5f5f5; }\n");
-        html.append("        .report-container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\n");
-        html.append("        .report-header { text-align: center; border-bottom: 2px solid #2c5aa0; padding-bottom: 25px; margin-bottom: 30px; }\n");
-        html.append("        .report-title { font-size: 28px; font-weight: bold; color: #2c5aa0; margin-bottom: 15px; }\n");
-        html.append("        .report-subtitle { font-size: 14px; color: #666; line-height: 1.8; }\n");
-        html.append("        .info-section { background: #f8fafd; border: 1px solid #dce8f5; border-radius: 6px; padding: 20px; margin-bottom: 25px; }\n");
-        html.append("        .info-row { display: flex; margin-bottom: 10px; font-size: 14px; }\n");
+        html.append("        body { font-family: 'SimSun', 'Microsoft YaHei', Arial, sans-serif; font-size: 12px; color: #333; }\n");
+        html.append("        .report-container { width: 100%; }\n");
+        html.append("        .report-header { text-align: center; padding-bottom: 15px; margin-bottom: 20px; border-bottom: 2px solid #2c5aa0; }\n");
+        html.append("        .report-title { font-size: 22px; font-weight: bold; color: #2c5aa0; margin-bottom: 8px; }\n");
+        html.append("        .report-subtitle { font-size: 12px; color: #666; line-height: 1.6; }\n");
+        html.append("        .info-section { background: #f8fafd; border: 1px solid #dce8f5; padding: 12px; margin-bottom: 18px; }\n");
+        html.append("        .info-row { display: flex; margin-bottom: 6px; font-size: 12px; }\n");
         html.append("        .info-row:last-child { margin-bottom: 0; }\n");
-        html.append("        .info-label { width: 120px; font-weight: bold; color: #555; flex-shrink: 0; }\n");
+        html.append("        .info-label { width: 100px; font-weight: bold; color: #555; }\n");
         html.append("        .info-value { color: #333; flex: 1; }\n");
-        html.append("        .summary-section { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }\n");
-        html.append("        .summary-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; padding: 20px; color: #fff; }\n");
-        html.append("        .summary-card:nth-child(2) { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }\n");
-        html.append("        .summary-card:nth-child(3) { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }\n");
-        html.append("        .summary-card:nth-child(4) { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }\n");
-        html.append("        .summary-label { font-size: 13px; opacity: 0.9; margin-bottom: 8px; }\n");
-        html.append("        .summary-value { font-size: 24px; font-weight: bold; }\n");
-        html.append("        .summary-unit { font-size: 14px; font-weight: normal; opacity: 0.8; margin-left: 3px; }\n");
-        html.append("        .table-section { margin-bottom: 25px; }\n");
-        html.append("        .table-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #2c5aa0; }\n");
-        html.append("        table { width: 100%; border-collapse: collapse; font-size: 13px; }\n");
-        html.append("        thead th { background: #2c5aa0; color: #fff; padding: 12px 10px; text-align: left; font-weight: 600; white-space: nowrap; }\n");
-        html.append("        thead th:first-child { border-top-left-radius: 6px; }\n");
-        html.append("        thead th:last-child { border-top-right-radius: 6px; }\n");
-        html.append("        tbody td { padding: 12px 10px; border-bottom: 1px solid #e8e8e8; color: #555; }\n");
-        html.append("        tbody tr:hover { background: #f8fafd; }\n");
-        html.append("        tbody tr:last-child td { border-bottom: none; }\n");
+        html.append("        .summary-section { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }\n");
+        html.append("        .summary-card { border: 1px solid #ddd; padding: 10px; }\n");
+        html.append("        .summary-label { font-size: 11px; color: #666; margin-bottom: 6px; }\n");
+        html.append("        .summary-value { font-size: 18px; font-weight: bold; color: #2c5aa0; }\n");
+        html.append("        .summary-unit { font-size: 11px; font-weight: normal; color: #666; margin-left: 2px; }\n");
+        html.append("        .table-section { margin-bottom: 18px; }\n");
+        html.append("        .table-title { font-size: 14px; font-weight: bold; color: #2c5aa0; margin-bottom: 10px; padding-left: 8px; border-left: 3px solid #2c5aa0; }\n");
+        html.append("        table { width: 100%; border-collapse: collapse; font-size: 11px; }\n");
+        html.append("        thead th { background: #2c5aa0; color: #fff; padding: 8px 6px; text-align: left; font-weight: 600; border: 1px solid #2c5aa0; }\n");
+        html.append("        tbody td { padding: 7px 6px; border: 1px solid #ddd; color: #555; }\n");
         html.append("        .text-right { text-align: right; }\n");
         html.append("        .text-center { text-align: center; }\n");
-        html.append("        .status-pending { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fff3cd; color: #856404; font-size: 12px; }\n");
-        html.append("        .status-processing { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #cce5ff; color: #004085; font-size: 12px; }\n");
-        html.append("        .status-success { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #d4edda; color: #155724; font-size: 12px; }\n");
-        html.append("        .status-fail { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #f8d7da; color: #721c24; font-size: 12px; }\n");
+        html.append("        .status-pending { display: inline-block; padding: 2px 6px; background: #fff3cd; color: #856404; font-size: 10px; }\n");
+        html.append("        .status-processing { display: inline-block; padding: 2px 6px; background: #cce5ff; color: #004085; font-size: 10px; }\n");
+        html.append("        .status-success { display: inline-block; padding: 2px 6px; background: #d4edda; color: #155724; font-size: 10px; }\n");
+        html.append("        .status-fail { display: inline-block; padding: 2px 6px; background: #f8d7da; color: #721c24; font-size: 10px; }\n");
         html.append("        .amount-positive { color: #155724; font-weight: 600; }\n");
-        html.append("        .report-footer { text-align: center; padding-top: 25px; border-top: 1px solid #e8e8e8; color: #999; font-size: 12px; line-height: 1.8; }\n");
-        html.append("        .empty-tip { text-align: center; padding: 50px 20px; color: #999; background: #fafafa; border-radius: 6px; }\n");
+        html.append("        .report-footer { text-align: center; padding-top: 15px; border-top: 1px solid #ddd; color: #999; font-size: 10px; line-height: 1.6; margin-top: 20px; }\n");
+        html.append("        .empty-tip { text-align: center; padding: 30px 10px; color: #999; background: #fafafa; border: 1px solid #ddd; }\n");
         html.append("    </style>\n");
         html.append("</head>\n");
         html.append("<body>\n");
@@ -162,7 +192,7 @@ public class PdfReportServiceImpl implements PdfReportService {
         html.append("        <div class=\"report-header\">\n");
         html.append("            <div class=\"report-title\">商户结算报表</div>\n");
         html.append("            <div class=\"report-subtitle\">\n");
-        html.append("                Merchant Settlement Report<br>\n");
+        html.append("                Merchant Settlement Report &nbsp;&nbsp;|&nbsp;&nbsp;\n");
         html.append("                报表生成时间: ").append(LocalDateTime.now().format(DATETIME_FORMATTER)).append("\n");
         html.append("            </div>\n");
         html.append("        </div>\n");
@@ -179,7 +209,7 @@ public class PdfReportServiceImpl implements PdfReportService {
         html.append("            <div class=\"info-row\">\n");
         html.append("                <span class=\"info-label\">结算周期:</span>\n");
         html.append("                <span class=\"info-value\">\n");
-        html.append("                    从 ").append(startDate != null ? startDate.format(DATE_FORMATTER) : "-");
+        html.append("                    ").append(startDate != null ? startDate.format(DATE_FORMATTER) : "-");
         html.append("                    至 ").append(endDate != null ? endDate.format(DATE_FORMATTER) : "-").append("\n");
         html.append("                </span>\n");
         html.append("            </div>\n");
@@ -286,8 +316,8 @@ public class PdfReportServiceImpl implements PdfReportService {
             html.append("                        <td>按各渠道费率计算的手续费</td>\n");
             html.append("                    </tr>\n");
             html.append("                    <tr>\n");
-            html.append("                        <td><strong>实际结算金额</strong></td>\n");
-            html.append("                        <td class=\"text-right\"><strong class=\"amount-positive\">").append(actualSettleSum.setScale(2, BigDecimal.ROUND_HALF_UP).toPlainString()).append("</strong></td>\n");
+            html.append("                        <td><b>实际结算金额</b></td>\n");
+            html.append("                        <td class=\"text-right\"><b class=\"amount-positive\">").append(actualSettleSum.setScale(2, BigDecimal.ROUND_HALF_UP).toPlainString()).append("</b></td>\n");
             html.append("                        <td>交易总额 - 手续费合计</td>\n");
             html.append("                    </tr>\n");
             html.append("                </tbody>\n");

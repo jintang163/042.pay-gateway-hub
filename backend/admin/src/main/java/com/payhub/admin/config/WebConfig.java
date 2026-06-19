@@ -35,7 +35,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/settlement/**",
                         "/api/split-rule/**",
                         "/api/reconcile/**",
-                        "/api/invoice/**"
+                        "/api/invoice/**",
+                        "/api/report/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",

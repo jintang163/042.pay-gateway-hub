@@ -77,7 +77,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/split-rule/**",
                         "/api/reconcile/**",
                         "/api/agent/**",
-                        "/api/invoice/**"
+                        "/api/invoice/**",
+                        "/api/report/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",
