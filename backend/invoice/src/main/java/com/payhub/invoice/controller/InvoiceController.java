@@ -1,6 +1,7 @@
 package com.payhub.invoice.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.payhub.common.context.CurrentUserContext;
 import com.payhub.common.result.Result;
 import com.payhub.invoice.dto.*;
 import com.payhub.invoice.service.InvoiceService;
@@ -29,67 +30,57 @@ public class InvoiceController {
     private InvoiceService invoiceService;
 
     @PostMapping("/apply")
-    public Result<InvoiceResult> applyInvoice(@Valid @RequestBody InvoiceApplyRequest request,
-                                              HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
-        if (merchantNo != null) {
-            request.setMerchantNo(merchantNo);
-        }
+    public Result<InvoiceResult> applyInvoice(@Valid @RequestBody InvoiceApplyRequest request) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
+        request.setMerchantNo(merchantNo);
         InvoiceResult result = invoiceService.applyInvoice(request);
         return Result.success(result);
     }
 
     @PostMapping("/red-flush")
-    public Result<InvoiceResult> redFlushInvoice(@Valid @RequestBody InvoiceRedFlushRequest request,
-                                                 HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
-        if (merchantNo != null) {
-            request.setMerchantNo(merchantNo);
-        }
+    public Result<InvoiceResult> redFlushInvoice(@Valid @RequestBody InvoiceRedFlushRequest request) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
+        request.setMerchantNo(merchantNo);
         InvoiceResult result = invoiceService.redFlushInvoice(request);
         return Result.success(result);
     }
 
     @PostMapping("/batch-apply")
-    public Result<List<InvoiceResult>> batchApplyInvoice(@Valid @RequestBody List<InvoiceApplyRequest> requests,
-                                                         HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
-        if (merchantNo != null) {
-            for (InvoiceApplyRequest request : requests) {
-                request.setMerchantNo(merchantNo);
-            }
+    public Result<List<InvoiceResult>> batchApplyInvoice(@Valid @RequestBody List<InvoiceApplyRequest> requests) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
+        for (InvoiceApplyRequest request : requests) {
+            request.setMerchantNo(merchantNo);
         }
         List<InvoiceResult> results = invoiceService.batchApplyInvoice(requests);
         return Result.success(results);
     }
 
     @GetMapping("/list")
-    public Result<IPage<InvoiceResult>> list(InvoiceQueryRequest request, HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+    public Result<IPage<InvoiceResult>> list(InvoiceQueryRequest request) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
         request.setMerchantNo(merchantNo);
         IPage<InvoiceResult> page = invoiceService.listPage(request);
         return Result.success(page);
     }
 
     @GetMapping("/{invoiceNo}")
-    public Result<InvoiceResult> detail(@PathVariable String invoiceNo, HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+    public Result<InvoiceResult> detail(@PathVariable String invoiceNo) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
         InvoiceResult result = invoiceService.getInvoiceDetail(invoiceNo, merchantNo);
         return Result.success(result);
     }
 
     @GetMapping("/{invoiceNo}/status")
-    public Result<InvoiceResult> queryStatus(@PathVariable String invoiceNo, HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+    public Result<InvoiceResult> queryStatus(@PathVariable String invoiceNo) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
         InvoiceResult result = invoiceService.queryInvoiceStatus(invoiceNo, merchantNo);
         return Result.success(result);
     }
 
     @GetMapping("/{invoiceNo}/download")
     public void downloadPdf(@PathVariable String invoiceNo,
-                            HttpServletRequest httpRequest,
                             HttpServletResponse response) throws Exception {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
         String pdfUrl = invoiceService.downloadPdf(invoiceNo, merchantNo);
 
         URL url = new URL(pdfUrl);
@@ -112,8 +103,8 @@ public class InvoiceController {
     }
 
     @GetMapping("/{invoiceNo}/pdf-url")
-    public Result<String> getPdfUrl(@PathVariable String invoiceNo, HttpServletRequest httpRequest) {
-        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+    public Result<String> getPdfUrl(@PathVariable String invoiceNo) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
         String pdfUrl = invoiceService.downloadPdf(invoiceNo, merchantNo);
         return Result.success(pdfUrl);
     }

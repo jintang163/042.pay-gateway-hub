@@ -2,8 +2,10 @@ package com.payhub.invoice.strategy;
 
 import com.alibaba.fastjson2.JSON;
 import com.payhub.invoice.config.InvoiceProperties;
+import com.payhub.invoice.entity.Invoice;
 import com.payhub.invoice.entity.InvoiceCallbackLog;
 import com.payhub.invoice.mapper.InvoiceCallbackLogMapper;
+import com.payhub.invoice.mapper.InvoiceMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -15,6 +17,9 @@ public abstract class AbstractInvoiceChannel implements InvoiceChannelStrategy {
 
     @Autowired
     private InvoiceCallbackLogMapper invoiceCallbackLogMapper;
+
+    @Autowired
+    protected InvoiceMapper invoiceMapper;
 
     protected void saveCallbackLog(String invoiceNo, String channelCode, String channelInvoiceNo,
                                    String requestBody, String responseBody, String notifyStatus) {
@@ -29,6 +34,17 @@ public abstract class AbstractInvoiceChannel implements InvoiceChannelStrategy {
             invoiceCallbackLogMapper.insert(logEntity);
         } catch (Exception e) {
             log.warn("保存发票回调日志失败: invoiceNo={}, error={}", invoiceNo, e.getMessage());
+        }
+    }
+
+    protected void updateInvoiceToDb(Invoice invoice) {
+        try {
+            if (invoice != null && invoice.getId() != null) {
+                invoiceMapper.updateById(invoice);
+                log.info("发票状态已回写数据库: invoiceNo={}, status={}", invoice.getInvoiceNo(), invoice.getInvoiceStatus());
+            }
+        } catch (Exception e) {
+            log.error("发票状态回写数据库失败: invoiceNo={}, error={}", invoice.getInvoiceNo(), e.getMessage(), e);
         }
     }
 

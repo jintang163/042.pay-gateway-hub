@@ -96,6 +96,7 @@ public class NuoNuoInvoiceChannel extends AbstractInvoiceChannel {
                 invoice.setTaxAmount(invoice.getTotalAmount() != null
                         ? invoice.getTotalAmount().multiply(new BigDecimal("0.06")).setScale(2, BigDecimal.ROUND_HALF_UP)
                         : BigDecimal.ZERO);
+                updateInvoiceToDb(invoice);
                 log.info("诺诺发票-沙箱模拟开票成功: invoiceNo={}", invoice.getInvoiceNo());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

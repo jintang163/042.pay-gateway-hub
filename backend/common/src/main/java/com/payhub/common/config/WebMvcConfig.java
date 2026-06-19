@@ -76,14 +76,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/settlement/**",
                         "/api/split-rule/**",
                         "/api/reconcile/**",
-                        "/api/agent/**"
+                        "/api/agent/**",
+                        "/api/invoice/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",
                         "/api/merchant/user/register",
                         "/api/merchant/apply",
                         "/api/pay/notify/**",
-                        "/api/pay/callback/**"
+                        "/api/pay/callback/**",
+                        "/api/invoice/notify/**"
                 )
                 .order(3);
     }

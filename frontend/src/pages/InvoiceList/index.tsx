@@ -34,6 +34,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { invoiceApi } from '@/api';
 import { InvoiceApplyModal } from '@/components';
+import BatchInvoiceApplyModal from './BatchInvoiceApplyModal';
 import type { Invoice, InvoiceRedFlushRequest, InvoiceQueryParams } from '@/types/invoice';
 import {
   invoiceStatusMap,
@@ -59,6 +60,8 @@ const InvoiceList = () => {
   const [redFlushForm] = Form.useForm<InvoiceRedFlushRequest>();
   const [submitting, setSubmitting] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState<string | null>(null);
+  const [batchApplyModalVisible, setBatchApplyModalVisible] = useState(false);
+  const [batchInvoiceData, setBatchInvoiceData] = useState<any[]>([]);
 
   const fetchData = async (
     page = pagination.current,
@@ -220,6 +223,20 @@ const InvoiceList = () => {
     }
   };
 
+  const handleBatchApply = async (invoices: any[]) => {
+    try {
+      setSubmitting(true);
+      const res = await invoiceApi.batchApply(invoices as any);
+      message.success(`批量开票已提交，共 ${invoices.length} 条记录`);
+      setBatchApplyModalVisible(false);
+      fetchData();
+    } catch (error: any) {
+      message.error('批量开票申请失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const renderStatusBadge = (status: number) => {
     const tag = invoiceStatusMap[status];
     if (!tag) return <Tag>-</Tag>;
@@ -343,9 +360,14 @@ const InvoiceList = () => {
   return (
     <div>
       <Card title="发票查询" style={{ marginBottom: 16 }} extra={
-        <Button type="primary" icon={<FileInvoiceOutlined />} onClick={handleOpenApply}>
-          申请开票
-        </Button>
+        <Space>
+          <Button icon={<FileInvoiceOutlined />} onClick={handleOpenApply}>
+            申请开票
+          </Button>
+          <Button type="primary" icon={<FileInvoiceOutlined />} onClick={() => setBatchApplyModalVisible(true)}>
+            批量开票
+          </Button>
+        </Space>
       }>
         <Form form={queryForm} layout="inline" onFinish={handleQuery}>
           <Form.Item name="invoiceNo" label="发票号">
@@ -594,6 +616,13 @@ const InvoiceList = () => {
           />
         </Form>
       </Modal>
+
+      <BatchInvoiceApplyModal
+        visible={batchApplyModalVisible}
+        onClose={() => setBatchApplyModalVisible(false)}
+        onSubmit={handleBatchApply}
+        submitting={submitting}
+      />
     </div>
   );
 };

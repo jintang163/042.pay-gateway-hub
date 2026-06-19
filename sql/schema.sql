@@ -867,3 +867,135 @@ CREATE TABLE IF NOT EXISTS `agent_withdraw` (
   KEY `idx_next_transfer_retry` (`next_transfer_retry_time`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='代理佣金提现表';
+
+-- -----------------------------------------------
+-- 28. 发票主表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `pay_invoice` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `invoice_no` VARCHAR(64) NOT NULL COMMENT '发票号(唯一)',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
+  `order_no` VARCHAR(64) NOT NULL COMMENT '关联订单号',
+  `channel_invoice_no` VARCHAR(128) DEFAULT NULL COMMENT '渠道发票号',
+  `channel_code` VARCHAR(32) NOT NULL COMMENT '开票渠道: NUONUO/BAIWANG',
+  `invoice_type` TINYINT NOT NULL DEFAULT 1 COMMENT '发票类型: 1蓝票 2红票',
+  `invoice_status` TINYINT NOT NULL DEFAULT 0 COMMENT '状态: 0待开票 1开票中 2成功 3失败 10待红冲 11红冲中 12红冲成功 13红冲失败',
+  `title_type` TINYINT NOT NULL DEFAULT 1 COMMENT '抬头类型: 1个人 2企业',
+  `buyer_title` VARCHAR(256) NOT NULL COMMENT '购方抬头',
+  `buyer_tax_no` VARCHAR(64) DEFAULT NULL COMMENT '购方税号',
+  `buyer_address` VARCHAR(256) DEFAULT NULL COMMENT '购方地址',
+  `buyer_bank_name` VARCHAR(128) DEFAULT NULL COMMENT '购方开户行',
+  `buyer_bank_account` VARCHAR(64) DEFAULT NULL COMMENT '购方银行账号',
+  `buyer_phone` VARCHAR(20) DEFAULT NULL COMMENT '购方手机号',
+  `buyer_email` VARCHAR(128) DEFAULT NULL COMMENT '购方邮箱',
+  `invoice_content` VARCHAR(256) DEFAULT NULL COMMENT '发票内容',
+  `invoice_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '开票金额(元)',
+  `tax_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '税额(元)',
+  `total_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '价税合计(元)',
+  `tax_rate` VARCHAR(16) DEFAULT '6%' COMMENT '税率',
+  `pdf_url` VARCHAR(512) DEFAULT NULL COMMENT '发票PDF下载地址',
+  `original_invoice_no` VARCHAR(64) DEFAULT NULL COMMENT '原发票号(红票必填)',
+  `red_reason` VARCHAR(512) DEFAULT NULL COMMENT '红冲原因',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `fail_reason` VARCHAR(512) DEFAULT NULL COMMENT '失败原因',
+  `notify_url` VARCHAR(512) DEFAULT NULL COMMENT '商户回调通知地址',
+  `issue_time` DATETIME DEFAULT NULL COMMENT '开票完成时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_invoice_no` (`invoice_no`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_channel_invoice_no` (`channel_invoice_no`),
+  KEY `idx_channel_code` (`channel_code`),
+  KEY `idx_invoice_type` (`invoice_type`),
+  KEY `idx_invoice_status` (`invoice_status`),
+  KEY `idx_original_invoice_no` (`original_invoice_no`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_issue_time` (`issue_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发票主表';
+
+-- -----------------------------------------------
+-- 29. 发票明细分项表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `pay_invoice_item` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `invoice_id` BIGINT NOT NULL COMMENT '发票主表ID',
+  `invoice_no` VARCHAR(64) NOT NULL COMMENT '发票号',
+  `item_name` VARCHAR(256) NOT NULL COMMENT '商品名称',
+  `item_code` VARCHAR(64) DEFAULT NULL COMMENT '商品编码',
+  `specification` VARCHAR(128) DEFAULT NULL COMMENT '规格型号',
+  `unit` VARCHAR(32) DEFAULT NULL COMMENT '单位',
+  `quantity` DECIMAL(18,4) DEFAULT NULL COMMENT '数量',
+  `unit_price` DECIMAL(18,4) DEFAULT NULL COMMENT '单价',
+  `amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '金额(元)',
+  `tax_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '税额(元)',
+  `tax_rate` VARCHAR(16) DEFAULT '6%' COMMENT '税率',
+  `tax_included_flag` TINYINT DEFAULT 1 COMMENT '是否含税: 0否 1是',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_invoice_id` (`invoice_id`),
+  KEY `idx_invoice_no` (`invoice_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发票明细分项表';
+
+-- -----------------------------------------------
+-- 30. 发票渠道回调日志表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `pay_invoice_callback_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `invoice_no` VARCHAR(64) DEFAULT NULL COMMENT '发票号',
+  `channel_code` VARCHAR(32) DEFAULT NULL COMMENT '开票渠道',
+  `channel_invoice_no` VARCHAR(128) DEFAULT NULL COMMENT '渠道发票号',
+  `request_body` TEXT DEFAULT NULL COMMENT '回调请求体',
+  `response_body` TEXT DEFAULT NULL COMMENT '回调响应体',
+  `notify_status` VARCHAR(32) DEFAULT 'RECEIVED' COMMENT '通知状态: RECEIVED/SUCCESS/FAIL',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_invoice_no` (`invoice_no`),
+  KEY `idx_channel_code` (`channel_code`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发票渠道回调日志表';
+
+-- -----------------------------------------------
+-- 31. 商户发票渠道配置表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `pay_invoice_channel_config` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
+  `channel_code` VARCHAR(32) NOT NULL COMMENT '开票渠道: NUONUO/BAIWANG',
+  `app_id` VARCHAR(128) DEFAULT NULL COMMENT '渠道应用ID/AppKey',
+  `app_secret` VARCHAR(512) DEFAULT NULL COMMENT '渠道密钥',
+  `access_token` VARCHAR(512) DEFAULT NULL COMMENT '访问令牌',
+  `tax_num` VARCHAR(64) DEFAULT NULL COMMENT '销方税号',
+  `company_name` VARCHAR(256) DEFAULT NULL COMMENT '销方公司名称',
+  `company_address` VARCHAR(256) DEFAULT NULL COMMENT '销方公司地址',
+  `company_phone` VARCHAR(20) DEFAULT NULL COMMENT '销方公司电话',
+  `bank_name` VARCHAR(128) DEFAULT NULL COMMENT '销方开户银行',
+  `bank_account` VARCHAR(64) DEFAULT NULL COMMENT '销方银行账号',
+  `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用: 0否 1是',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除: 0未删除 1已删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_channel` (`merchant_no`, `channel_code`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_channel_code` (`channel_code`),
+  KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户发票渠道配置表';
+
+-- -----------------------------------------------
+-- 初始化发票渠道配置数据(沙箱测试)
+-- -----------------------------------------------
+INSERT IGNORE INTO `pay_invoice_channel_config`
+(`merchant_no`, `channel_code`, `app_id`, `app_secret`, `access_token`,
+ `tax_num`, `company_name`, `enabled`, `created_at`, `updated_at`)
+VALUES
+('M000001', 'NUONUO', 'sandbox_nuonuo_appkey', 'sandbox_nuonuo_secret', 'sandbox_nuonuo_token',
+ '91330100MA12345678', '沙箱测试商户1诺诺配置', 1, NOW(), NOW()),
+('M000001', 'BAIWANG', 'sandbox_baiwang_appid', 'sandbox_baiwang_secret', NULL,
+ '91330100MA12345678', '沙箱测试商户1百望配置', 1, NOW(), NOW()),
+('M000002', 'NUONUO', 'sandbox_nuonuo_appkey2', 'sandbox_nuonuo_secret2', 'sandbox_nuonuo_token2',
+ '91330100MA87654321', '沙箱测试商户2诺诺配置', 1, NOW(), NOW());

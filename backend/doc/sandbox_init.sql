@@ -372,3 +372,111 @@ CREATE TABLE IF NOT EXISTS risk_whitelist (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted INT DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =====================================================
+-- 沙箱发票表
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS pay_invoice (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    invoice_no VARCHAR(64) NOT NULL UNIQUE,
+    merchant_no VARCHAR(32) NOT NULL,
+    order_no VARCHAR(64) NOT NULL,
+    channel_invoice_no VARCHAR(128),
+    channel_code VARCHAR(32) NOT NULL,
+    invoice_type INT DEFAULT 1,
+    invoice_status INT DEFAULT 0,
+    title_type INT DEFAULT 1,
+    buyer_title VARCHAR(256) NOT NULL,
+    buyer_tax_no VARCHAR(64),
+    buyer_address VARCHAR(256),
+    buyer_bank_name VARCHAR(128),
+    buyer_bank_account VARCHAR(64),
+    buyer_phone VARCHAR(20),
+    buyer_email VARCHAR(128),
+    invoice_content VARCHAR(256),
+    invoice_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    tax_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    total_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    tax_rate VARCHAR(16) DEFAULT '6%',
+    pdf_url VARCHAR(512),
+    original_invoice_no VARCHAR(64),
+    red_reason VARCHAR(512),
+    remark VARCHAR(512),
+    fail_reason VARCHAR(512),
+    notify_url VARCHAR(512),
+    issue_time DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_order_no (order_no),
+    INDEX idx_invoice_status (invoice_status),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS pay_invoice_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    invoice_id BIGINT NOT NULL,
+    invoice_no VARCHAR(64) NOT NULL,
+    item_name VARCHAR(256) NOT NULL,
+    item_code VARCHAR(64),
+    specification VARCHAR(128),
+    unit VARCHAR(32),
+    quantity DECIMAL(18,4),
+    unit_price DECIMAL(18,4),
+    amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    tax_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+    tax_rate VARCHAR(16) DEFAULT '6%',
+    tax_included_flag INT DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_invoice_id (invoice_id),
+    INDEX idx_invoice_no (invoice_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS pay_invoice_callback_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    invoice_no VARCHAR(64),
+    channel_code VARCHAR(32),
+    channel_invoice_no VARCHAR(128),
+    request_body TEXT,
+    response_body TEXT,
+    notify_status VARCHAR(32) DEFAULT 'RECEIVED',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_invoice_no (invoice_no),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS pay_invoice_channel_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    merchant_no VARCHAR(32) NOT NULL,
+    channel_code VARCHAR(32) NOT NULL,
+    app_id VARCHAR(128),
+    app_secret VARCHAR(512),
+    access_token VARCHAR(512),
+    tax_num VARCHAR(64),
+    company_name VARCHAR(256),
+    company_address VARCHAR(256),
+    company_phone VARCHAR(20),
+    bank_name VARCHAR(128),
+    bank_account VARCHAR(64),
+    enabled INT DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    UNIQUE KEY uk_merchant_channel (merchant_no, channel_code),
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO pay_invoice_channel_config (merchant_no, channel_code, app_id, app_secret, access_token,
+                                       tax_num, company_name, enabled, created_at, updated_at)
+VALUES
+('M000001', 'NUONUO', 'sandbox_nuonuo_appkey', 'sandbox_nuonuo_secret', 'sandbox_nuonuo_token',
+ '91330100MA12345678', '沙箱测试商户1诺诺配置', 1, NOW(), NOW()),
+('M000001', 'BAIWANG', 'sandbox_baiwang_appid', 'sandbox_baiwang_secret', NULL,
+ '91330100MA12345678', '沙箱测试商户1百望配置', 1, NOW(), NOW()),
+('M000002', 'NUONUO', 'sandbox_nuonuo_appkey2', 'sandbox_nuonuo_secret2', 'sandbox_nuonuo_token2',
+ '91330100MA87654321', '沙箱测试商户2诺诺配置', 1, NOW(), NOW());
