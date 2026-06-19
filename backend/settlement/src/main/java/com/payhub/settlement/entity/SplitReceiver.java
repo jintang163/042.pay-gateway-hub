@@ -43,6 +43,8 @@ public class SplitReceiver implements Serializable {
 
     private String verifyFailReason;
 
+    private String verifyFailCode;
+
     private String verifyRequestId;
 
     private String contactName;

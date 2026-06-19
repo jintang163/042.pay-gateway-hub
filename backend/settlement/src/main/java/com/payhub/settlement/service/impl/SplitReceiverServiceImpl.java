@@ -1,7 +1,10 @@
 package com.payhub.settlement.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.poi.excel.ExcelReader;
+import cn.hutool.poi.excel.ExcelUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -22,11 +25,16 @@ import com.payhub.settlement.enums.VerifyChannelEnum;
 import com.payhub.settlement.mapper.SplitReceiverMapper;
 import com.payhub.settlement.mapper.SplitReceiverVerifyLogMapper;
 import com.payhub.settlement.service.SplitReceiverService;
+import com.payhub.settlement.verify.BankCardVerifyResult;
+import com.payhub.settlement.verify.BankCardVerifyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +49,10 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
 
     @Autowired
     private SplitReceiverVerifyLogMapper verifyLogMapper;
+
+    @Autowired
+    @Qualifier("bankCardVerifyService")
+    private BankCardVerifyService bankCardVerifyService;
 
     @Override
     public IPage<SplitReceiverVO> listPage(Long current, Long size, String merchantNo, Map<String, Object> params) {
@@ -158,7 +170,10 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
         if (receiver == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "分账接收方不存在");
         }
+        doVerifyReceiverInternal(receiver, request.getVerifyChannel(), operatorId, operatorName);
+    }
 
+    private void doVerifyReceiverInternal(SplitReceiver receiver, Integer verifyChannel, String operatorId, String operatorName) {
         if (SplitReceiverVerifyStatusEnum.VERIFYING.getCode().equals(receiver.getVerifyStatus())) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "接收方正在认证中，请稍后再试");
         }
@@ -168,51 +183,57 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
 
         String verifyRequestId = OrderNoGenerator.generateWithPrefix("VR");
         LocalDateTime verifyTime = LocalDateTime.now();
-        Integer verifyStatus;
-        String verifyFailReason = null;
-        String verifyResult;
 
-        String bankCardNo = receiver.getBankCardNo();
-        if (bankCardNo != null && bankCardNo.endsWith("0000")) {
+        BankCardVerifyResult verifyResult = bankCardVerifyService.verifyFourElements(
+                receiver.getIdCardName(),
+                receiver.getIdCardNo(),
+                receiver.getBankCardNo(),
+                receiver.getBankPhone(),
+                verifyRequestId
+        );
+
+        Integer verifyStatus;
+        String verifyResultStr;
+        if (Boolean.TRUE.equals(verifyResult.getSuccess())) {
             verifyStatus = SplitReceiverVerifyStatusEnum.VERIFIED.getCode();
-            verifyResult = "认证成功";
-        } else if (bankCardNo != null && bankCardNo.endsWith("9999")) {
-            verifyStatus = SplitReceiverVerifyStatusEnum.FAILED.getCode();
-            verifyFailReason = "银行卡四要素核验失败，信息不匹配";
-            verifyResult = "认证失败";
+            verifyResultStr = "认证成功";
         } else {
-            verifyStatus = SplitReceiverVerifyStatusEnum.VERIFYING.getCode();
-            verifyResult = "认证处理中";
+            verifyStatus = SplitReceiverVerifyStatusEnum.FAILED.getCode();
+            verifyResultStr = "认证失败";
         }
 
         receiver.setVerifyStatus(verifyStatus);
-        receiver.setVerifyChannel(request.getVerifyChannel());
+        receiver.setVerifyChannel(verifyChannel);
         receiver.setVerifyTime(verifyTime);
         receiver.setVerifyRequestId(verifyRequestId);
-        receiver.setVerifyFailReason(verifyFailReason);
+        receiver.setVerifyFailCode(verifyResult.getFailCode());
+        receiver.setVerifyFailReason(verifyResult.getFailReason());
         receiver.setOperatorId(operatorId);
         receiver.setOperatorName(operatorName);
         this.updateById(receiver);
 
         SplitReceiverVerifyLog verifyLog = new SplitReceiverVerifyLog();
         verifyLog.setLogNo(OrderNoGenerator.generateWithPrefix("VL"));
-        verifyLog.setMerchantNo(merchantNo);
-        verifyLog.setReceiverNo(request.getReceiverNo());
-        verifyLog.setVerifyChannel(request.getVerifyChannel());
+        verifyLog.setMerchantNo(receiver.getMerchantNo());
+        verifyLog.setReceiverNo(receiver.getReceiverNo());
+        verifyLog.setVerifyChannel(verifyChannel);
         verifyLog.setVerifyRequestId(verifyRequestId);
         verifyLog.setIdCardName(receiver.getIdCardName());
         verifyLog.setIdCardNo(receiver.getIdCardNo());
         verifyLog.setBankCardNo(receiver.getBankCardNo());
         verifyLog.setBankPhone(receiver.getBankPhone());
         verifyLog.setVerifyStatus(verifyStatus);
-        verifyLog.setVerifyResult(verifyResult);
-        verifyLog.setVerifyFailReason(verifyFailReason);
+        verifyLog.setVerifyResult(verifyResultStr);
+        verifyLog.setVerifyFailCode(verifyResult.getFailCode());
+        verifyLog.setVerifyFailReason(verifyResult.getFailReason());
         verifyLog.setVerifyTime(verifyTime);
+        verifyLog.setRequestData(verifyResult.getRequestData());
+        verifyLog.setResponseData(verifyResult.getResponseData());
         verifyLog.setOperatorId(operatorId);
         verifyLog.setOperatorName(operatorName);
         verifyLogMapper.insert(verifyLog);
 
-        log.info("分账接收方实名认证完成: receiverNo={}, verifyStatus={}, verifyRequestId={}", request.getReceiverNo(), verifyStatus, verifyRequestId);
+        log.info("分账接收方实名认证完成: receiverNo={}, verifyStatus={}, verifyRequestId={}", receiver.getReceiverNo(), verifyStatus, verifyRequestId);
     }
 
     @Override
@@ -236,11 +257,19 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> batchImport(List<SplitReceiverBatchImportItem> items, String merchantNo, String operatorId, String operatorName) {
+        return batchImport(items, false, merchantNo, operatorId, operatorName);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> batchImport(List<SplitReceiverBatchImportItem> items, Boolean autoVerify, String merchantNo, String operatorId, String operatorName) {
         Map<String, Object> result = new HashMap<>();
         int successCount = 0;
         int failCount = 0;
         List<Map<String, Object>> failDetails = new ArrayList<>();
+        List<Map<String, Object>> importedReceivers = new ArrayList<>();
         Set<String> existingKeys = new HashSet<>();
+        List<SplitReceiver> toVerifyReceivers = new ArrayList<>();
 
         for (int i = 0; i < items.size(); i++) {
             SplitReceiverBatchImportItem item = items.get(i);
@@ -329,6 +358,15 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
                 receiver.setOperatorName(operatorName);
                 this.save(receiver);
                 successCount++;
+
+                Map<String, Object> imported = new HashMap<>();
+                imported.put("receiverNo", receiver.getReceiverNo());
+                imported.put("receiverName", receiver.getReceiverName());
+                importedReceivers.add(imported);
+
+                if (Boolean.TRUE.equals(autoVerify)) {
+                    toVerifyReceivers.add(receiver);
+                }
             } catch (Exception e) {
                 failCount++;
                 Map<String, Object> detail = new HashMap<>();
@@ -342,7 +380,153 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
         result.put("successCount", successCount);
         result.put("failCount", failCount);
         result.put("failDetails", failDetails);
-        log.info("分账接收方批量导入完成: merchantNo={}, successCount={}, failCount={}", merchantNo, successCount, failCount);
+        result.put("importedReceivers", importedReceivers);
+
+        if (Boolean.TRUE.equals(autoVerify) && CollUtil.isNotEmpty(toVerifyReceivers)) {
+            int verifySuccessCount = 0;
+            int verifyFailCount = 0;
+            List<Map<String, Object>> verifyFailDetails = new ArrayList<>();
+            for (SplitReceiver receiver : toVerifyReceivers) {
+                try {
+                    doVerifyReceiverInternal(receiver, VerifyChannelEnum.BANK_CARD_FOUR.getCode(), operatorId, operatorName);
+                    verifySuccessCount++;
+                } catch (Exception e) {
+                    verifyFailCount++;
+                    Map<String, Object> detail = new HashMap<>();
+                    detail.put("receiverNo", receiver.getReceiverNo());
+                    detail.put("receiverName", receiver.getReceiverName());
+                    detail.put("reason", e.getMessage());
+                    verifyFailDetails.add(detail);
+                }
+            }
+            result.put("verifySuccessCount", verifySuccessCount);
+            result.put("verifyFailCount", verifyFailCount);
+            result.put("verifyFailDetails", verifyFailDetails);
+        }
+
+        log.info("分账接收方批量导入完成: merchantNo={}, successCount={}, failCount={}, autoVerify={}", merchantNo, successCount, failCount, autoVerify);
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> batchImportWithFile(MultipartFile file, Boolean autoVerify, String merchantNo, String operatorId, String operatorName) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "上传文件不能为空");
+        }
+        String originalFilename = file.getOriginalFilename();
+        if (StrUtil.isBlank(originalFilename)) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "文件名不能为空");
+        }
+        String lowerName = originalFilename.toLowerCase();
+        if (!lowerName.endsWith(".xlsx") && !lowerName.endsWith(".xls") && !lowerName.endsWith(".csv")) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "仅支持 .xlsx/.xls/.csv 格式文件");
+        }
+
+        List<SplitReceiverBatchImportItem> items = new ArrayList<>();
+        try (InputStream is = file.getInputStream()) {
+            ExcelReader reader;
+            if (lowerName.endsWith(".csv")) {
+                reader = ExcelUtil.getReader(is);
+            } else {
+                reader = ExcelUtil.getReader(is, 0);
+            }
+
+            List<Map<String, Object>> rows = reader.readAll();
+            if (CollUtil.isEmpty(rows)) {
+                throw new BusinessException(ResultCode.PARAM_ERROR, "文件内容为空");
+            }
+
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(i);
+                SplitReceiverBatchImportItem item = new SplitReceiverBatchImportItem();
+                item.setReceiverName(getCellStr(row, "接收方名称"));
+                String typeStr = getCellStr(row, "接收方类型");
+                if (StrUtil.isNotBlank(typeStr)) {
+                    if ("1".equals(typeStr) || "个人".equals(typeStr)) {
+                        item.setReceiverType(1);
+                    } else if ("2".equals(typeStr) || "企业".equals(typeStr)) {
+                        item.setReceiverType(2);
+                    }
+                }
+                item.setIdCardName(getCellStr(row, "证件姓名"));
+                item.setIdCardNo(getCellStr(row, "证件号码"));
+                item.setBankCardNo(getCellStr(row, "银行卡号"));
+                item.setBankPhone(getCellStr(row, "预留手机号"));
+                item.setBankName(getCellStr(row, "开户银行"));
+                item.setBankBranchName(getCellStr(row, "开户支行"));
+                item.setContactName(getCellStr(row, "联系人"));
+                item.setContactPhone(getCellStr(row, "联系电话"));
+                item.setContactEmail(getCellStr(row, "联系邮箱"));
+                item.setRemark(getCellStr(row, "备注"));
+                items.add(item);
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("解析批量导入文件失败: merchantNo={}, fileName={}", merchantNo, originalFilename, e);
+            throw new BusinessException(ResultCode.PARAM_ERROR, "解析文件失败: " + e.getMessage());
+        }
+
+        return batchImport(items, autoVerify, merchantNo, operatorId, operatorName);
+    }
+
+    private String getCellStr(Map<String, Object> row, String key) {
+        if (row == null || !row.containsKey(key)) {
+            return null;
+        }
+        Object val = row.get(key);
+        return val != null ? val.toString().trim() : null;
+    }
+
+    @Override
+    public Map<String, Object> batchVerifyReceiver(List<String> receiverNos, String merchantNo, String operatorId, String operatorName) {
+        Map<String, Object> result = new HashMap<>();
+        int successCount = 0;
+        int failCount = 0;
+        List<Map<String, Object>> failDetails = new ArrayList<>();
+
+        if (CollUtil.isEmpty(receiverNos)) {
+            result.put("successCount", 0);
+            result.put("failCount", 0);
+            result.put("failDetails", failDetails);
+            return result;
+        }
+
+        for (String receiverNo : receiverNos) {
+            try {
+                LambdaQueryWrapper<SplitReceiver> wrapper = new LambdaQueryWrapper<>();
+                wrapper.eq(SplitReceiver::getReceiverNo, receiverNo)
+                        .eq(SplitReceiver::getMerchantNo, merchantNo);
+                SplitReceiver receiver = this.getOne(wrapper);
+                if (receiver == null) {
+                    failCount++;
+                    Map<String, Object> detail = new HashMap<>();
+                    detail.put("receiverNo", receiverNo);
+                    detail.put("reason", "分账接收方不存在");
+                    failDetails.add(detail);
+                    continue;
+                }
+                doVerifyReceiverInternal(receiver, VerifyChannelEnum.SANDBOX.getCode(), operatorId, operatorName);
+                successCount++;
+            } catch (BusinessException e) {
+                failCount++;
+                Map<String, Object> detail = new HashMap<>();
+                detail.put("receiverNo", receiverNo);
+                detail.put("reason", e.getMessage());
+                failDetails.add(detail);
+            } catch (Exception e) {
+                failCount++;
+                Map<String, Object> detail = new HashMap<>();
+                detail.put("receiverNo", receiverNo);
+                detail.put("reason", "系统异常: " + e.getMessage());
+                failDetails.add(detail);
+            }
+        }
+
+        result.put("successCount", successCount);
+        result.put("failCount", failCount);
+        result.put("failDetails", failDetails);
+        log.info("分账接收方批量认证完成: merchantNo={}, successCount={}, failCount={}", merchantNo, successCount, failCount);
         return result;
     }
 

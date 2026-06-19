@@ -83,6 +83,7 @@ export interface SplitRuleQueryParams extends PageParams {
 export type SplitRuleListResult = PageResult<SplitRule>;
 
 export interface SplitRuleItem {
+  receiverNo?: string;
   receiverAccount: string;
   receiverName: string;
   splitValue: number;

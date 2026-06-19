@@ -45,6 +45,7 @@
         <commons-codec.version>1.16.0</commons-codec.version>
         <drools.version>7.74.1.Final</drools.version>
         <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <dependencyManagement>
@@ -173,6 +174,12 @@
                 <groupId>com.openhtmltopdf</groupId>
                 <artifactId>openhtmltopdf-java2d</artifactId>
                 <version>${openhtmltopdf.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

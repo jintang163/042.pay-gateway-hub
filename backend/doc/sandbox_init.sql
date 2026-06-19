@@ -708,6 +708,7 @@ CREATE TABLE IF NOT EXISTS split_receiver (
     verify_status     INT           DEFAULT 0 COMMENT '认证状态：0未认证 1认证中 2已认证 3认证失败',
     verify_channel    INT           DEFAULT NULL COMMENT '认证渠道：1银行卡四要素 2银行卡三要素 3人脸识别',
     verify_time       DATETIME      DEFAULT NULL COMMENT '最近认证时间',
+    verify_fail_code  VARCHAR(64)   DEFAULT NULL COMMENT '认证失败错误码',
     verify_fail_reason VARCHAR(500) DEFAULT NULL COMMENT '认证失败原因',
     verify_request_id VARCHAR(64)   DEFAULT NULL COMMENT '认证请求流水号',
     contact_name      VARCHAR(64)   DEFAULT NULL COMMENT '联系人姓名',

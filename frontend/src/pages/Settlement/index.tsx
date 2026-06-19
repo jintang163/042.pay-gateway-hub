@@ -33,7 +33,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { settlementApi, splitRuleApi, splitDetailApi } from '@/api';
+import { settlementApi, splitRuleApi, splitDetailApi, splitReceiverApi } from '@/api';
 import type {
   Settlement,
   SettlementQueryParams,
@@ -44,6 +44,7 @@ import type {
   SplitDetailQueryParams,
   SettleStatus,
 } from '@/types/settlement';
+import type { SplitReceiver } from '@/types/splitReceiver';
 import { formatDateTime } from '@/utils';
 
 const { RangePicker } = DatePicker;
@@ -51,6 +52,12 @@ const { RangePicker } = DatePicker;
 const formatAmount = (fen: number): string => {
   if (fen === undefined || fen === null) return '-';
   return `¥${(fen / 100).toFixed(2)}`;
+};
+
+const maskBankCard = (bankCard: string): string => {
+  if (!bankCard) return '';
+  if (bankCard.length <= 8) return bankCard;
+  return bankCard.slice(0, 4) + ' **** **** ' + bankCard.slice(-4);
 };
 
 const settleStatusMap: Record<number, { color: string; text: string }> = {
@@ -108,6 +115,7 @@ const SettlementPage = () => {
 
   const [splitType, setSplitType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [splitItems, setSplitItems] = useState<SplitRuleItem[]>([]);
+  const [availableReceivers, setAvailableReceivers] = useState<SplitReceiver[]>([]);
 
   const fetchSettleData = async (
     page = settlePagination.current,
@@ -211,12 +219,23 @@ const SettlementPage = () => {
     fetchSplitDetailData(1, splitDetailPagination.pageSize);
   };
 
+  const fetchAvailableReceivers = async () => {
+    try {
+      const result = await splitReceiverApi.available();
+      setAvailableReceivers(result);
+    } catch (e) {
+      message.error('加载可用接收方列表失败');
+      setAvailableReceivers([]);
+    }
+  };
+
   const handleAddSplit = () => {
     setEditingSplit(null);
     setSplitType('PERCENT');
-    setSplitItems([{ receiverAccount: '', receiverName: '', splitValue: 0 }]);
+    setSplitItems([{ receiverNo: '', receiverAccount: '', receiverName: '', splitValue: 0 }]);
     splitRuleForm.resetFields();
     setSplitModalVisible(true);
+    fetchAvailableReceivers();
   };
 
   const handleEditSplit = (record: SplitRule) => {
@@ -224,7 +243,11 @@ const SettlementPage = () => {
     try {
       const parsed = JSON.parse(record.splitDetails);
       setSplitType(parsed.type || 'PERCENT');
-      setSplitItems(parsed.details || []);
+      const details = (parsed.details || []).map((item: any) => ({
+        ...item,
+        receiverNo: item.receiverNo || item.receiverAccount,
+      }));
+      setSplitItems(details);
     } catch {
       setSplitType('PERCENT');
       setSplitItems([]);
@@ -235,6 +258,7 @@ const SettlementPage = () => {
       status: record.status,
     });
     setSplitModalVisible(true);
+    fetchAvailableReceivers();
   };
 
   const handleDeleteSplit = async (id: number) => {
@@ -329,7 +353,7 @@ const SettlementPage = () => {
   };
 
   const addSplitItem = () => {
-    setSplitItems([...splitItems, { receiverAccount: '', receiverName: '', splitValue: 0 }]);
+    setSplitItems([...splitItems, { receiverNo: '', receiverAccount: '', receiverName: '', splitValue: 0 }]);
   };
 
   const removeSplitItem = (index: number) => {
@@ -824,17 +848,30 @@ const SettlementPage = () => {
           {splitItems.map((item, index) => (
             <Row key={index} gutter={8} style={{ marginBottom: 8 }} align="middle">
               <Col span={7}>
-                <Input
-                  placeholder="接收方账户"
-                  value={item.receiverAccount}
-                  onChange={(e) => updateSplitItem(index, 'receiverAccount', e.target.value)}
+                <Select
+                  placeholder="选择已认证接收方"
+                  value={item.receiverNo || item.receiverAccount || undefined}
+                  style={{ width: '100%' }}
+                  showSearch
+                  optionFilterProp="label"
+                  options={availableReceivers.map((r) => ({
+                    label: `${r.receiverNo} - ${r.receiverName} (${r.bankName} ${maskBankCard(r.bankCardNo)})`,
+                    value: r.receiverNo,
+                    receiver: r,
+                  }))}
+                  onChange={(value, option: any) => {
+                    const r = option.receiver as SplitReceiver;
+                    updateSplitItem(index, 'receiverNo', r.receiverNo);
+                    updateSplitItem(index, 'receiverAccount', r.receiverNo);
+                    updateSplitItem(index, 'receiverName', r.receiverName);
+                  }}
                 />
               </Col>
               <Col span={6}>
                 <Input
                   placeholder="接收方名称"
                   value={item.receiverName}
-                  onChange={(e) => updateSplitItem(index, 'receiverName', e.target.value)}
+                  disabled
                 />
               </Col>
               <Col span={6}>

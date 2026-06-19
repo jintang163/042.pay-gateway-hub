@@ -18,7 +18,10 @@ import {
   Drawer,
   Divider,
   Alert,
+  Upload,
+  Switch,
 } from 'antd';
+import type { UploadProps } from 'antd';
 import {
   ReloadOutlined,
   SearchOutlined,
@@ -30,6 +33,7 @@ import {
   UploadOutlined,
   FileTextOutlined,
   SwapOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { splitReceiverApi } from '@/api';
@@ -131,6 +135,11 @@ const SplitReceiverPage = () => {
   const [verifySubmitting, setVerifySubmitting] = useState(false);
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [autoVerify, setAutoVerify] = useState(false);
+  const [batchVerifySubmitting, setBatchVerifySubmitting] = useState(false);
+  const [importResult, setImportResult] = useState<{ successCount: number; failCount: number; failDetails: any[] } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [logLoading, setLogLoading] = useState(false);
   const [logData, setLogData] = useState<SplitReceiverVerifyLog[]>([]);
@@ -307,30 +316,112 @@ const SplitReceiverPage = () => {
 
   const handleImport = () => {
     setImportJsonText('');
+    setAutoVerify(false);
+    setImportResult(null);
+    setSelectedFile(null);
     setImportModalVisible(true);
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = ['接收方名称', '接收方类型(1个人2企业3个体)', '证件姓名', '身份证号', '银行卡号', '银行预留手机号', '开户银行', '开户支行', '联系人姓名', '联系人电话', '联系人邮箱', '备注'];
+    const sampleRow = ['张三', '1', '张三', '110101199001011234', '6222021234567890123', '13800138000', '中国工商银行', '北京朝阳支行', '张三', '13800138000', 'zhangsan@example.com', '测试导入'];
+    const csvContent = [headers.join(','), sampleRow.join(',')].join('\n');
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', '分账接收方导入模板.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    message.success('模板下载成功');
+  };
+
+  const handleBatchVerify = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要认证的接收方');
+      return;
+    }
+    Modal.confirm({
+      title: '确认批量认证',
+      content: `确定对选中的 ${selectedRowKeys.length} 个接收方发起实名认证？`,
+      okText: '确认',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          setBatchVerifySubmitting(true);
+          const selectedReceivers = data.filter((item) => selectedRowKeys.includes(item.id as React.Key));
+          const receiverNos = selectedReceivers.map((item) => item.receiverNo);
+          const result = await splitReceiverApi.batchVerify(receiverNos);
+          if (result) {
+            const success = result.successCount || 0;
+            const fail = result.failCount || 0;
+            if (fail > 0 && result.failDetails?.length > 0) {
+              Modal.error({
+                title: '批量认证完成',
+                content: (
+                  <div>
+                    <p>成功：{success} 条</p>
+                    <p>失败：{fail} 条</p>
+                    <Divider>失败详情</Divider>
+                    <div style={{ maxHeight: 300, overflow: 'auto' }}>
+                      {result.failDetails.map((item: any, idx: number) => (
+                        <div key={idx} style={{ marginBottom: 8 }}>
+                          <span style={{ color: '#ff4d4f' }}>
+                            [{item.receiverNo || item.receiverName}] {item.failReason || '未知错误'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              });
+            } else {
+              message.success(`批量认证成功，共 ${success} 条`);
+            }
+          } else {
+            message.success('批量认证请求已提交');
+          }
+          setSelectedRowKeys([]);
+          fetchData();
+        } catch (e: any) {
+          message.error(e?.message || '批量认证失败');
+        } finally {
+          setBatchVerifySubmitting(false);
+        }
+      },
+    });
   };
 
   const handleImportSubmit = async () => {
     try {
-      let items: SplitReceiverBatchImportItem[];
-      try {
-        items = JSON.parse(importJsonText);
-      } catch {
-        message.error('JSON 格式错误，请检查输入');
-        return;
-      }
-      if (!Array.isArray(items)) {
-        message.error('请输入 JSON 数组格式');
-        return;
-      }
-      if (items.length === 0) {
-        message.error('导入数据不能为空');
+      if (!selectedFile) {
+        message.error('请选择要导入的文件');
         return;
       }
       setImportSubmitting(true);
-      await splitReceiverApi.batchImport(items);
-      message.success(`成功导入 ${items.length} 条记录`);
-      setImportModalVisible(false);
+      const result = await splitReceiverApi.batchImportFile(selectedFile, autoVerify);
+      if (result) {
+        const success = result.successCount || 0;
+        const fail = result.failCount || 0;
+        setImportResult(result);
+        if (fail > 0 && result.failDetails?.length > 0) {
+          message.warning(`导入完成：成功 ${success} 条，失败 ${fail} 条`);
+        } else {
+          message.success(`导入成功，共 ${success} 条记录`);
+          setTimeout(() => {
+            setImportModalVisible(false);
+          }, 1500);
+        }
+      } else {
+        message.success('导入成功');
+        setTimeout(() => {
+          setImportModalVisible(false);
+        }, 1500);
+      }
       fetchData();
     } catch (error: any) {
       message.error(error?.message || '导入失败');
@@ -572,6 +663,14 @@ const SplitReceiverPage = () => {
             <Button icon={<FileTextOutlined />} onClick={() => handleViewLogs()}>
               认证记录
             </Button>
+            <Button
+              icon={<SafetyCertificateOutlined />}
+              onClick={handleBatchVerify}
+              disabled={selectedRowKeys.length === 0}
+              loading={batchVerifySubmitting}
+            >
+              批量认证{selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
+            </Button>
             <Button icon={<UploadOutlined />} onClick={handleImport}>
               批量导入
             </Button>
@@ -668,6 +767,10 @@ const SplitReceiverPage = () => {
           dataSource={data}
           rowKey="id"
           loading={loading}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+          }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.size,
@@ -986,26 +1089,86 @@ const SplitReceiverPage = () => {
           showIcon
           message={
             <Space direction="vertical">
-              <span>请粘贴 JSON 数组格式数据进行批量导入</span>
+              <span>请上传 .xlsx/.xls/.csv 格式的导入文件</span>
               <Button
                 type="link"
                 size="small"
+                icon={<DownloadOutlined />}
                 style={{ padding: 0 }}
-                onClick={() => setImportJsonText(SAMPLE_JSON_TEMPLATE)}
+                onClick={handleDownloadTemplate}
               >
-                点击加载示例模板
+                下载导入模板
               </Button>
             </Space>
           }
           style={{ marginBottom: 16 }}
         />
-        <Input.TextArea
-          value={importJsonText}
-          onChange={(e) => setImportJsonText(e.target.value)}
-          rows={16}
-          placeholder={SAMPLE_JSON_TEMPLATE}
-          style={{ fontFamily: 'monospace', fontSize: 12 }}
-        />
+
+        <div style={{ marginBottom: 16 }}>
+          <Upload
+            accept=".xlsx,.xls,.csv"
+            maxCount={1}
+            customRequest={({ file, onSuccess, onError }) => {
+              setSelectedFile(file as File);
+              setImportResult(null);
+              onSuccess?.(file);
+            }}
+            onRemove={() => {
+              setSelectedFile(null);
+              setImportResult(null);
+            }}
+            fileList={selectedFile ? [{
+              uid: '-1',
+              name: selectedFile.name,
+              status: 'done',
+              size: selectedFile.size,
+            }] : []}
+          >
+            <Button icon={<UploadOutlined />}>
+              {selectedFile ? '重新选择文件' : '选择文件'}
+            </Button>
+          </Upload>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <Space>
+            <span>导入后自动发起实名认证：</span>
+            <Switch
+              checked={autoVerify}
+              onChange={setAutoVerify}
+            />
+          </Space>
+        </div>
+
+        {importResult && (
+          <Alert
+            type={importResult.failCount > 0 ? 'warning' : 'success'}
+            showIcon
+            message="导入结果"
+            description={
+              <div>
+                <p>成功：{importResult.successCount || 0} 条</p>
+                <p>失败：{importResult.failCount || 0} 条</p>
+                {importResult.failDetails && importResult.failDetails.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '8px 0' }}>失败详情</Divider>
+                    <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                      {importResult.failDetails.map((item: any, idx: number) => (
+                        <div key={idx} style={{ marginBottom: 6 }}>
+                          <span style={{ color: '#ff4d4f' }}>
+                            第{item.rowNum ? `${item.rowNum}行 - ` : ''}
+                            [{item.receiverName || item.receiverNo || '未知'}] {item.failReason || '未知错误'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            }
+            style={{ marginTop: 16 }}
+          />
+        )}
       </Modal>
 
       <Drawer

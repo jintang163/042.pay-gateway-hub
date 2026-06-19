@@ -43,6 +43,17 @@ export const splitReceiverApi = {
     return request.post<void>('/split-receiver/batch-import', items);
   },
 
+  batchImportFile: (file: File, autoVerify: boolean) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('autoVerify', String(autoVerify));
+    return request.upload<any>('/split-receiver/batch-import-file', formData);
+  },
+
+  batchVerify: (receiverNos: string[]) => {
+    return request.post<any>('/split-receiver/batch-verify', { receiverNos });
+  },
+
   verifyLogs: (params: SplitReceiverVerifyLogQueryParams) => {
     return request.get<IPageResult<SplitReceiverVerifyLog>>('/split-receiver/verify-logs', params);
   },

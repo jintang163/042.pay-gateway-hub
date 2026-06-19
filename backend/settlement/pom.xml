@@ -44,5 +44,10 @@
             <groupId>com.openhtmltopdf</groupId>
             <artifactId>openhtmltopdf-java2d</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
     </dependencies>
 </project>
