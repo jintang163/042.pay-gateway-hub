@@ -31,6 +31,9 @@ import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.mapper.PayOrderMapper;
 import com.payhub.pay.service.PayOrderService;
 import com.payhub.pay.service.PayRouterService;
+import com.payhub.risk.dto.RiskCheckRequest;
+import com.payhub.risk.dto.RiskCheckResult;
+import com.payhub.risk.service.RiskControlService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -73,6 +76,9 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
     @Autowired(required = false)
     @Lazy
     private AgentProfitService agentProfitService;
+
+    @Autowired(required = false)
+    private RiskControlService riskControlService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -149,17 +155,71 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
         log.info("支付订单创建成功: orderNo={}, merchantNo={}, amount={}, channel={}", 
                 orderNo, request.getMerchantNo(), request.getPayAmount(), config.getChannelCode());
 
+        if (riskControlService != null) {
+            try {
+                RiskCheckRequest riskRequest = RiskCheckRequest.builder()
+                        .merchantNo(request.getMerchantNo())
+                        .orderNo(orderNo)
+                        .clientIp(request.getClientIp())
+                        .userIdentity(request.getUserIdentity())
+                        .payAmount(request.getPayAmount())
+                        .payChannel(config.getPayChannel())
+                        .payType(request.getPayType())
+                        .build();
+                RiskCheckResult riskResult = riskControlService.checkRisk(riskRequest);
+                if (riskResult != null && !riskResult.isPass()) {
+                    String riskMsg = riskResult.getSuggestion() != null
+                            ? riskResult.getSuggestion()
+                            : "风控拦截: " + (riskResult.getRiskDesc() != null ? riskResult.getRiskDesc() : "高风险交易");
+                    log.warn("风控拦截，拒绝下单: orderNo={}, riskLevel={}, riskRules={}, suggestion={}",
+                            orderNo, riskResult.getRiskLevel(), riskResult.getRiskRules(), riskResult.getSuggestion());
+                    order.setPayStatus(PayStatusEnum.FAIL.getCode());
+                    this.updateById(order);
+                    throw new BusinessException(ResultCode.RISK_BLOCKED, riskMsg);
+                }
+                log.info("风控检查通过: orderNo={}, riskLevel={}", orderNo,
+                        riskResult != null ? riskResult.getRiskLevel() : 0);
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("风控检查异常，默认放行: orderNo={}, error={}", orderNo, e.getMessage(), e);
+            }
+        }
+
         com.payhub.channel.dto.UnifiedOrderRequest channelRequest = buildChannelRequest(order, config);
         PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(config.getChannelCode());
-        UnifiedOrderResponse channelResponse = strategy.unifiedOrder(channelRequest);
+        long start = System.currentTimeMillis();
+        UnifiedOrderResponse channelResponse = null;
+        String errorMsg = null;
+        try {
+            channelResponse = strategy.unifiedOrder(channelRequest);
+        } catch (Exception e) {
+            errorMsg = e.getMessage();
+            log.error("通道下单异常, orderNo={}, channel={}, error={}", orderNo, config.getChannelCode(), e.getMessage(), e);
+        } finally {
+            int costTime = (int) (System.currentTimeMillis() - start);
+            if (strategy instanceof com.payhub.channel.strategy.AbstractPayChannel) {
+                ((com.payhub.channel.strategy.AbstractPayChannel) strategy).saveChannelLog(
+                        request.getMerchantNo(),
+                        orderNo,
+                        "unifiedOrder",
+                        "",
+                        JSON.toJSONString(channelRequest),
+                        channelResponse != null ? JSON.toJSONString(channelResponse) : "",
+                        channelResponse != null ? channelResponse.getChannelTradeNo() : "",
+                        costTime,
+                        errorMsg
+                );
+            }
+        }
 
         if (channelResponse == null || !channelResponse.isSuccess()) {
-            String errorMsg = channelResponse != null ? channelResponse.getMsg() : "通道下单失败";
+            String finalError = channelResponse != null ? channelResponse.getMsg() : (errorMsg != null ? errorMsg : "通道下单失败");
             log.error("通道下单失败, orderNo={}, channel={}, error={}", 
-                    orderNo, config.getChannelCode(), errorMsg);
+                    orderNo, config.getChannelCode(), finalError);
             order.setPayStatus(PayStatusEnum.FAIL.getCode());
             this.updateById(order);
-            throw new BusinessException(ResultCode.SYSTEM_ERROR, "支付通道下单失败: " + errorMsg);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "支付通道下单失败: " + finalError);
         }
 
         order.setChannelTradeNo(channelResponse.getChannelTradeNo());

@@ -245,22 +245,10 @@ const OrderList = () => {
 
   const renderFailBadge = (record: any) => {
     if (record.payStatus !== 2 && record.payStatus !== 3) return null;
-    const failMockMap: Record<number, { code: string; msg: string; category: string }> = {
-      0: { code: 'FAIL_INSUFFICIENT_BALANCE', msg: '用户余额不足', category: 'BALANCE' },
-      3: { code: 'FAIL_RISK_REJECT', msg: '风控系统拦截', category: 'RISK' },
-      6: { code: 'FAIL_CHANNEL_TIMEOUT', msg: '支付通道超时', category: 'CHANNEL' },
-      9: { code: 'FAIL_SIGN_VERIFY_FAILED', msg: '签名验证失败', category: 'SIGN' },
-    };
-    let info: { code: string; msg: string; category: string } | undefined;
-    if ((record.id as number) % 2 === 0) {
-      info = failMockMap[(record.id as number) % 12] || { code: 'FAIL_UNKNOWN', msg: '未知原因', category: 'OTHER' };
-    }
-    if (!info) return null;
-    const meta = failCategoryMeta[info.category] || failCategoryMeta.OTHER;
     return (
-      <Tooltip title={info.msg}>
-        <Tag color={meta.color} icon={meta.icon} style={{ marginRight: 0, marginTop: 4 }}>
-          {info.msg}
+      <Tooltip title="点击详情查看智能归因分析">
+        <Tag color="orange" style={{ marginRight: 0, marginTop: 4, cursor: 'pointer' }}>
+          <EyeOutlined /> 查看归因
         </Tag>
       </Tooltip>
     );
@@ -508,16 +496,25 @@ const OrderList = () => {
               <Card size="small" title={<span style={{ fontSize: 13 }}><SafetyOutlined /> 最近风控日志</span>} bordered>
                 <Descriptions column={1} size="small">
                   <Descriptions.Item label="风险等级">
-                    <Tag color={attribution.latestRiskLog.riskLevel === 'HIGH' ? 'red' : 'orange'}>
-                      {attribution.latestRiskLog.riskLevel || '-'}
-                    </Tag>
+                    {(() => {
+                      const lvl = attribution.latestRiskLog?.riskLevel;
+                      if (lvl === 3) return <Tag color="red">高风险 (3)</Tag>;
+                      if (lvl === 2) return <Tag color="orange">中风险 (2)</Tag>;
+                      if (lvl === 1) return <Tag color="green">低风险 (1)</Tag>;
+                      return <Tag>未知</Tag>;
+                    })()}
                   </Descriptions.Item>
                   <Descriptions.Item label="命中规则">
                     {attribution.latestRiskLog.riskRule || '-'}
                   </Descriptions.Item>
                   <Descriptions.Item label="处理结果">
-                    {attribution.latestRiskLog.handleDesc ||
-                      (attribution.latestRiskLog.handleResult === 2 ? '拒绝交易' : '-')}
+                    {(() => {
+                      const result = attribution.latestRiskLog?.handleResult;
+                      const desc = attribution.latestRiskLog?.handleDesc;
+                      if (result === 0) return <Tag color="red">拒绝交易</Tag>;
+                      if (result === 1) return <Tag color="green">通过</Tag>;
+                      return desc || '-';
+                    })()}
                   </Descriptions.Item>
                   <Descriptions.Item label="详情">
                     <Tooltip title={attribution.latestRiskLog.riskDesc}>

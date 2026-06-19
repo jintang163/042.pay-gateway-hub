@@ -93,7 +93,7 @@ export interface OrderAttributionVO {
     merchantNo?: string;
     orderNo?: string;
     riskType?: string;
-    riskLevel?: string;
+    riskLevel?: number;
     riskRule?: string;
     riskDesc?: string;
     handleResult?: number;

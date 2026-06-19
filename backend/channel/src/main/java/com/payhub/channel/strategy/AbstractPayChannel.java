@@ -8,9 +8,11 @@ import com.payhub.channel.entity.PayChannelLog;
 import com.payhub.channel.enums.OrderStatusEnum;
 import com.payhub.channel.enums.PayTypeEnum;
 import com.payhub.channel.enums.RefundStatusEnum;
+import com.payhub.channel.mapper.PayChannelLogMapper;
 import com.payhub.channel.sandbox.SandboxSceneSimulator;
 import com.payhub.common.context.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,6 +24,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 public abstract class AbstractPayChannel implements PayChannelStrategy {
+
+    protected static PayChannelLogMapper payChannelLogMapper;
+
+    @Autowired
+    public void setPayChannelLogMapper(PayChannelLogMapper mapper) {
+        AbstractPayChannel.payChannelLogMapper = mapper;
+    }
 
     protected static final Map<String, LocalDateTime> PAY_TIME_CACHE = new ConcurrentHashMap<>();
 
@@ -169,9 +178,15 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
             channelLog.setCostTime(costTime);
             channelLog.setErrorMsg(errorMsg);
             channelLog.setCreateTime(LocalDateTime.now());
-            log.debug("[{}]通道日志:{}", getChannelCode(), JSON.toJSONString(channelLog));
+            if (payChannelLogMapper != null) {
+                payChannelLogMapper.insert(channelLog);
+                log.info("[{}]通道日志已保存, orderNo={}, requestType={}, costTime={}ms, success={}",
+                        getChannelCode(), orderNo, requestType, costTime, StrUtil.isBlank(errorMsg));
+            } else {
+                log.warn("[{}]payChannelLogMapper未注入，跳过通道日志持久化: {}", getChannelCode(), JSON.toJSONString(channelLog));
+            }
         } catch (Exception e) {
-            log.warn("[{}]保存通道日志失败:{}", getChannelCode(), e.getMessage());
+            log.warn("[{}]保存通道日志失败:{}", getChannelCode(), e.getMessage(), e);
         }
     }
 

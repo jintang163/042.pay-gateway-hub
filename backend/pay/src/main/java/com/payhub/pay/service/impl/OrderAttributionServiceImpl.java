@@ -8,6 +8,7 @@ import com.payhub.common.enums.FailReasonEnum;
 import com.payhub.common.enums.PayStatusEnum;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
+import com.payhub.risk.enums.RiskLevelEnum;
 import com.payhub.pay.dto.vo.OrderAttributionVO;
 import com.payhub.pay.dto.vo.PayOrderBriefVO;
 import com.payhub.pay.entity.PayOrder;
@@ -130,9 +131,11 @@ public class OrderAttributionServiceImpl implements OrderAttributionService {
 
         if (riskLog != null && isRiskRejected(riskLog)) {
             evidence.add("命中风控规则: " + riskLog.getRiskRule() + " / " + riskLog.getRiskDesc());
-            if (riskLog.getHandleDesc() != null) {
-                evidence.add("处理结果: " + riskLog.getHandleDesc());
-            }
+            evidence.add("风险等级: " + (riskLog.getRiskLevel() != null
+                    ? RiskLevelEnum.getByCode(riskLog.getRiskLevel()).getDesc()
+                    : "未知"));
+            evidence.add("处理结果: " + riskLog.getHandleResult()
+                    + (riskLog.getHandleDesc() != null ? " / " + riskLog.getHandleDesc() : ""));
             return FailReasonEnum.RISK_REJECT;
         }
 
@@ -199,8 +202,14 @@ public class OrderAttributionServiceImpl implements OrderAttributionService {
     }
 
     private boolean isRiskRejected(RiskControlLog riskLog) {
-        return riskLog.getHandleResult() != null && riskLog.getHandleResult() == 2
-                || (riskLog.getRiskLevel() != null && "HIGH".equalsIgnoreCase(riskLog.getRiskLevel()));
+        if (riskLog.getHandleResult() != null && riskLog.getHandleResult() == 0) {
+            return true;
+        }
+        if (riskLog.getRiskLevel() != null && riskLog.getRiskLevel() >= RiskLevelEnum.HIGH.getCode()) {
+            String handleDesc = str(riskLog.getHandleDesc());
+            return handleDesc.contains("拦截") || handleDesc.contains("BLOCK");
+        }
+        return false;
     }
 
     private String str(String s) {
