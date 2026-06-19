@@ -32,6 +32,9 @@ const AgentProfit = lazy(() => import('@/pages/AgentProfit'));
 const AgentWithdraw = lazy(() => import('@/pages/AgentWithdraw'));
 const InvoiceList = lazy(() => import('@/pages/InvoiceList'));
 const ReportSubscription = lazy(() => import('@/pages/ReportSubscription'));
+const PayLinkManage = lazy(() => import('@/pages/PayLinkManage'));
+const CouponManage = lazy(() => import('@/pages/CouponManage'));
+const ActivityConfig = lazy(() => import('@/pages/ActivityConfig'));
 
 export interface RouteConfigItem {
   path: string;
@@ -179,6 +182,28 @@ export const routesConfig: RouteConfigItem[] = [
     name: '支付页面定制',
     icon: 'PaletteOutlined',
     element: <PaymentPageEditor />,
+  },
+  {
+    path: 'marketing',
+    name: '营销工具',
+    icon: 'GiftOutlined',
+    children: [
+      {
+        path: 'pay-link',
+        name: '支付链接',
+        element: <PayLinkManage />,
+      },
+      {
+        path: 'coupon',
+        name: '优惠券管理',
+        element: <CouponManage />,
+      },
+      {
+        path: 'activity',
+        name: '活动配置',
+        element: <ActivityConfig />,
+      },
+    ],
   },
   {
     path: 'agent',

@@ -26,6 +26,7 @@
         <module>invoice</module>
         <module>settlement</module>
         <module>risk</module>
+        <module>marketing</module>
         <module>admin</module>
     </modules>
 
@@ -129,6 +130,12 @@
             <dependency>
                 <groupId>com.payhub</groupId>
                 <artifactId>risk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.payhub</groupId>
+                <artifactId>marketing</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

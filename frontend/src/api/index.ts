@@ -15,3 +15,4 @@ export { merchantConfigTestApi } from './merchantConfigTest';
 export { agentRelationApi, agentProfitRuleApi, agentProfitApi, agentWithdrawApi } from './agent';
 export { invoiceApi } from './invoice';
 export { reportApi } from './report';
+export { payLinkApi, couponApi, activityApi } from './marketing';

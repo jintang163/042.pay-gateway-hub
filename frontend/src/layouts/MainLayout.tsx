@@ -21,6 +21,7 @@ import {
   RocketOutlined,
   TeamOutlined,
   ExclamationCircleOutlined,
+  GiftOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import type { MenuProps } from 'antd';
@@ -46,6 +47,7 @@ const iconMap: Record<string, React.ReactNode> = {
   PaletteOutlined: <PaletteOutlined />,
   RocketOutlined: <RocketOutlined />,
   TeamOutlined: <TeamOutlined />,
+  GiftOutlined: <GiftOutlined />,
 };
 
 const buildMenuItems = (items: typeof routesConfig, prefix = ''): MenuItem[] => {
