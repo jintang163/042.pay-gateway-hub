@@ -60,7 +60,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/pay/unifiedorder",
                         "/api/pay/query",
                         "/api/pay/refund/apply",
-                        "/api/pay/refund/query"
+                        "/api/pay/refund/query",
+                        "/api/pay/barcode",
+                        "/api/pay/facepay",
+                        "/api/pay/barcode/retry/*",
+                        "/api/pay/facepay/retry/*",
+                        "/api/pay/aggregate/order",
+                        "/api/pay/aggregate/order/*"
                 )
                 .order(2);
 
@@ -82,7 +88,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/pay-link/**",
                         "/api/coupon/**",
                         "/api/activity/**",
-                        "/api/split-receiver/**"
+                        "/api/split-receiver/**",
+                        "/api/cashier/**"
                 )
                 .excludePathPatterns(
                         "/api/merchant/user/login",

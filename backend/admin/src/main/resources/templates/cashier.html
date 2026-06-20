@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>商户收银台</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.19.0/js/md5.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -44,6 +46,15 @@
       background: #52c41a;
       border-radius: 50%;
     }
+    .login-tip {
+      background: #fff7e6;
+      color: #d46b08;
+      padding: 10px 14px;
+      font-size: 12px;
+      text-align: center;
+      display: none;
+    }
+    .login-tip.show { display: block; }
     .card-body { padding: 28px 24px; }
     .amount-section { text-align: center; margin-bottom: 28px; }
     .amount-label { font-size: 13px; color: #999; margin-bottom: 8px; }
@@ -127,6 +138,34 @@
 
     .barcode-section { display: none; }
     .barcode-section.active { display: block; }
+    .scan-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .scan-toggle .mini-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      color: #333;
+    }
+    .scan-toggle .mini-btn.active {
+      background: #1677ff;
+      color: #fff;
+      border-color: #1677ff;
+    }
+    #reader {
+      width: 100%;
+      margin-bottom: 16px;
+      border-radius: 12px;
+      overflow: hidden;
+      display: none;
+    }
+    #reader.active { display: block; }
     .barcode-input-wrapper {
       position: relative;
       margin-bottom: 16px;
@@ -155,45 +194,52 @@
       color: #999;
       text-align: center;
       margin-bottom: 16px;
+      line-height: 1.5;
     }
 
     .facepay-section { display: none; text-align: center; }
     .facepay-section.active { display: block; }
-    .face-area {
-      width: 180px;
-      height: 180px;
-      margin: 0 auto 20px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #e6f4ff, #f0f5ff);
+    .face-sdk-container {
+      width: 100%;
+      height: 240px;
+      margin-bottom: 16px;
+      border-radius: 12px;
+      background: #f5f6fa;
+      overflow: hidden;
+      position: relative;
+    }
+    #facepay-container {
+      width: 100%;
+      height: 100%;
+    }
+    .face-fallback {
+      width: 100%;
+      height: 100%;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      position: relative;
-      cursor: pointer;
-      transition: all .3s;
+      gap: 10px;
+      color: #999;
     }
-    .face-area:hover { transform: scale(1.02); }
-    .face-area.scanning::before {
-      content: '';
-      position: absolute;
-      left: 10%; right: 10%;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, #1677ff, transparent);
-      border-radius: 2px;
-      animation: scan 2s ease-in-out infinite;
-    }
-    @keyframes scan {
-      0% { top: 15%; }
-      50% { top: 85%; }
-      100% { top: 15%; }
-    }
-    .face-icon { font-size: 72px; }
+    .face-fallback-icon { font-size: 72px; }
+    .face-fallback-text { font-size: 13px; line-height: 1.6; }
     .facepay-hint {
       font-size: 13px;
       color: #666;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       line-height: 1.6;
     }
+    .face-sdk-status {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .face-sdk-status.ready { background: #f6ffed; color: #52c41a; }
+    .face-sdk-status.loading { background: #e6f4ff; color: #1677ff; }
+    .face-sdk-status.error { background: #fff1f0; color: #ff4d4f; }
 
     .action-btn {
       width: 100%;
@@ -283,7 +329,7 @@
       padding: 4px 0;
     }
     .result-detail .label { color: #999; }
-    .result-detail .value { color: #333; }
+    .result-detail .value { color: #333; word-break: break-all; max-width: 60%; }
 
     .qrcode-section { display: none; text-align: center; }
     .qrcode-section.active { display: block; }
@@ -297,6 +343,11 @@
       background: #fff;
     }
     .qrcode-box img { width: 100%; height: 100%; }
+    .qrcode-empty {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      color: #999; font-size: 13px;
+    }
     .qrcode-hint {
       font-size: 13px;
       color: #666;
@@ -318,6 +369,30 @@
       color: #333;
     }
     .qrcode-actions .mini-btn:hover { border-color: #1677ff; color: #1677ff; }
+
+    .loading-bar {
+      width: 100%;
+      height: 3px;
+      background: #f0f0f0;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 10px;
+      display: none;
+    }
+    .loading-bar.active { display: block; }
+    .loading-bar::after {
+      content: '';
+      display: block;
+      width: 30%;
+      height: 100%;
+      background: #1677ff;
+      border-radius: 2px;
+      animation: loading 1s ease-in-out infinite;
+    }
+    @keyframes loading {
+      0% { margin-left: -30%; }
+      100% { margin-left: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -328,9 +403,10 @@
         <p class="sub">安全便捷 · 多种支付方式</p>
         <div class="merchant-info">
           <span class="dot"></span>
-          <span>商户号：<span th:text="${merchantNo}">-</span></span>
+          <span>商户号：<span id="merchantNoLabel" th:text="${merchantNo}">-</span></span>
         </div>
       </div>
+      <div class="login-tip" id="loginTip">未获取到登录态，请先登录商户后台</div>
 
       <div class="card-body">
         <div class="amount-section">
@@ -370,23 +446,30 @@
         </div>
 
         <div class="barcode-section active" id="barcodeSection">
-          <div class="barcode-input-wrapper">
+          <div class="scan-toggle">
+            <button class="mini-btn active" id="scanCamBtn" onclick="toggleScanMode('camera')">📷 摄像头扫码</button>
+            <button class="mini-btn" id="scanGunBtn" onclick="toggleScanMode('manual')">⌨️ 扫码枪/手输</button>
+          </div>
+          <div id="reader"></div>
+          <div class="barcode-input-wrapper" id="manualWrapper" style="display:none;">
             <span class="barcode-icon">⌗</span>
             <input type="text" class="barcode-input" id="authCodeInput"
-                   placeholder="请扫描或输入付款码" maxlength="32"/>
+                   placeholder="请扫描或输入付款码" maxlength="32" autocomplete="off"/>
           </div>
-          <div class="barcode-hint">请将扫码枪对准用户付款码，或手动输入后按回车</div>
-          <button class="action-btn primary" id="barcodeBtn" onclick="submitBarcodePay()">确认收款</button>
+          <div class="barcode-hint">
+            <span id="barcodeHint">请允许摄像头权限，将用户付款码对准扫描框</span>
+          </div>
+          <div class="loading-bar" id="barcodeLoading"></div>
+          <button class="action-btn primary" id="barcodeBtn" onclick="submitBarcodePay()" disabled>等待获取付款码...</button>
         </div>
 
         <div class="qrcode-section" id="qrcodeSection">
-          <div class="qrcode-box">
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:13px;">
-              点击生成收款码
-            </div>
+          <div class="qrcode-box" id="qrcodeBox">
+            <div class="qrcode-empty">点击生成收款码</div>
           </div>
           <div class="qrcode-hint">用户打开微信/支付宝扫描二维码完成支付</div>
-          <button class="action-btn primary" onclick="generateQrCode()">生成收款码</button>
+          <div class="loading-bar" id="qrLoading"></div>
+          <button class="action-btn primary" id="qrBtn" onclick="generateQrCode()">生成收款码</button>
           <div class="qrcode-actions">
             <button class="mini-btn" onclick="refreshQrCode()">刷新二维码</button>
             <button class="mini-btn" onclick="queryQrOrder()">查询订单</button>
@@ -394,15 +477,22 @@
         </div>
 
         <div class="facepay-section" id="facepaySection">
-          <div class="face-area" id="faceArea" onclick="startFacePay()">
-            <span class="face-icon">😊</span>
+          <div class="face-sdk-container">
+            <div id="facepay-container">
+              <div class="face-fallback" id="faceFallback">
+                <div class="face-fallback-icon">😊</div>
+                <div class="face-fallback-text" id="faceSdkHint">刷脸SDK加载中...</div>
+              </div>
+            </div>
           </div>
+          <div><span class="face-sdk-status loading" id="faceSdkStatus">SDK初始化中</span></div>
           <div class="facepay-hint">
             请将面部对准摄像头<br/>
-            点击开始刷脸识别，或输入用户OpenID
+            点击「开始刷脸支付」发起识别
           </div>
-          <input type="text" class="product-input" id="openIdInput" placeholder="用户OpenID（选填）"/>
-          <button class="action-btn primary" id="facepayBtn" onclick="submitFacePay()" style="margin-top:16px;">开始刷脸支付</button>
+          <input type="text" class="product-input" id="openIdInput" placeholder="用户OpenID（调试用，可留空）" style="margin-bottom:16px;"/>
+          <div class="loading-bar" id="faceLoading"></div>
+          <button class="action-btn primary" id="facepayBtn" onclick="startFacePay()">开始刷脸支付</button>
         </div>
       </div>
     </div>
@@ -421,10 +511,66 @@
   </div>
 
 <script>
-  var merchantNo = /*[[${merchantNo}]]*/ 'M000001';
+  var merchantNo = /*[[${merchantNo}]]*/ null;
   var currentChannel = 'WECHAT_PAY';
   var currentOrderNo = '';
   var pollingTimer = null;
+  var html5QrCode = null;
+  var scanMode = 'camera';
+  var lastScanCode = '';
+  var scanCooldown = 0;
+  var wxFacepaySdk = null;
+  var aliFacepaySdk = null;
+  var facepaySdkReady = false;
+  var currentFaceCode = '';
+  var cashApiBase = '/api/cashier';
+
+  function getToken() {
+    var t = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (t && t.indexOf('Bearer ') !== 0) t = 'Bearer ' + t;
+    return t || null;
+  }
+
+  function cashFetch(url, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    var token = getToken();
+    if (token) options.headers['Authorization'] = token;
+    options.headers['Content-Type'] = 'application/json';
+    return fetch(url, options).then(function(r) { return r.json(); });
+  }
+
+  function randomString(len) {
+    var chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678';
+    var s = '';
+    for (var i = 0; i < len; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+    return s;
+  }
+
+  function genOrderNo() {
+    var t = new Date().getTime();
+    var r = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return 'CB' + t + r;
+  }
+
+  function initCashier() {
+    if (!merchantNo) {
+      var saved = localStorage.getItem('merchantNo');
+      if (saved) { merchantNo = saved; document.getElementById('merchantNoLabel').textContent = merchantNo; }
+    }
+    cashFetch(cashApiBase + '/init').then(function(res) {
+      if (res.code === 200 && res.data) {
+        merchantNo = res.data.merchantNo;
+        document.getElementById('merchantNoLabel').textContent = merchantNo;
+        localStorage.setItem('merchantNo', merchantNo);
+        document.getElementById('loginTip').classList.remove('show');
+      } else {
+        document.getElementById('loginTip').classList.add('show');
+      }
+    }).catch(function() {
+      document.getElementById('loginTip').classList.add('show');
+    });
+  }
 
   function selectChannel(el) {
     document.querySelectorAll('.channel-option').forEach(function(opt) {
@@ -432,9 +578,14 @@
     });
     el.classList.add('active');
     currentChannel = el.getAttribute('data-channel');
+    if (currentPayMode === 'facepay') {
+      initFacepaySdk();
+    }
   }
 
+  var currentPayMode = 'barcode';
   function switchPayMode(mode) {
+    currentPayMode = mode;
     document.querySelectorAll('.pay-tab').forEach(function(tab, idx) {
       tab.classList.toggle('active', (mode === 'barcode' && idx === 0) ||
         (mode === 'qrcode' && idx === 1) || (mode === 'facepay' && idx === 2));
@@ -442,6 +593,80 @@
     document.getElementById('barcodeSection').classList.toggle('active', mode === 'barcode');
     document.getElementById('qrcodeSection').classList.toggle('active', mode === 'qrcode');
     document.getElementById('facepaySection').classList.toggle('active', mode === 'facepay');
+    if (mode === 'barcode') {
+      toggleScanMode(scanMode);
+    } else {
+      stopScanner();
+    }
+    if (mode === 'facepay') {
+      initFacepaySdk();
+    }
+  }
+
+  function toggleScanMode(mode) {
+    scanMode = mode;
+    document.getElementById('scanCamBtn').classList.toggle('active', mode === 'camera');
+    document.getElementById('scanGunBtn').classList.toggle('active', mode === 'manual');
+    document.getElementById('reader').classList.toggle('active', mode === 'camera');
+    document.getElementById('manualWrapper').style.display = mode === 'manual' ? 'block' : 'none';
+    document.getElementById('barcodeHint').textContent = mode === 'camera'
+      ? '请允许摄像头权限，将用户付款码对准扫描框'
+      : '请将扫码枪对准用户付款码，或手动输入后按回车';
+    var btn = document.getElementById('barcodeBtn');
+    if (mode === 'camera') {
+      btn.textContent = '等待扫描付款码...';
+      btn.disabled = true;
+      startScanner();
+    } else {
+      btn.textContent = '确认收款';
+      btn.disabled = false;
+      stopScanner();
+    }
+  }
+
+  function startScanner() {
+    if (!window.Html5Qrcode) {
+      document.getElementById('barcodeHint').textContent = '扫码组件未加载，请切换到扫码枪/手输模式';
+      toggleScanMode('manual');
+      return;
+    }
+    stopScanner();
+    html5QrCode = new Html5Qrcode("reader");
+    var config = { fps: 10, qrbox: { width: 300, height: 150 }, aspectRatio: 2.0 };
+    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+      .catch(function(err) {
+        console.error('启动摄像头失败:', err);
+        document.getElementById('barcodeHint').textContent = '无法启动摄像头: ' + (err.message || err) + '，请切换到扫码枪模式';
+        toggleScanMode('manual');
+      });
+  }
+
+  function stopScanner() {
+    if (html5QrCode && html5QrCode.isScanning) {
+      html5QrCode.stop().then(function() {
+        html5QrCode.clear();
+      }).catch(function() {});
+    }
+  }
+
+  function onScanSuccess(decodedText) {
+    var now = Date.now();
+    if (now - scanCooldown < 1500) return;
+    if (decodedText === lastScanCode && now - scanCooldown < 3000) return;
+    scanCooldown = now;
+    lastScanCode = decodedText;
+    var cleanCode = decodedText.trim().replace(/[\s\n\r]/g, '');
+    if (!cleanCode) return;
+    document.getElementById('authCodeInput').value = cleanCode;
+    var btn = document.getElementById('barcodeBtn');
+    btn.disabled = false;
+    btn.textContent = '已获取付款码: ' + cleanCode.slice(0, 4) + '****' + cleanCode.slice(-4);
+    if (cleanCode.length >= 10) {
+      setTimeout(function() { submitBarcodePay(); }, 300);
+    }
+  }
+
+  function onScanFailure() {
   }
 
   function getAmount() {
@@ -454,57 +679,52 @@
     return document.getElementById('productInput').value || '商品购买';
   }
 
-  function genOrderNo() {
-    var t = new Date().getTime();
-    var r = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return 'CB' + t + r;
-  }
-
   function submitBarcodePay() {
     var amount = getAmount(); if (!amount) return;
     var authCode = document.getElementById('authCodeInput').value.trim();
-    if (!authCode) { alert('请输入或扫描付款码'); return; }
+    if (!authCode) { alert('请扫描或输入付款码'); return; }
 
     var orderNo = genOrderNo();
     var btn = document.getElementById('barcodeBtn');
     btn.disabled = true; btn.textContent = '支付处理中...';
+    document.getElementById('barcodeLoading').classList.add('active');
 
-    fetch('/api/pay/barcode', {
+    cashFetch(cashApiBase + '/barcode', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         merchantOrderNo: orderNo,
         payAmount: parseFloat(amount),
         payChannel: currentChannel,
         authCode: authCode,
-        productSubject: getProduct(),
-        notifyUrl: 'https://callback.example.com/notify'
+        productSubject: getProduct()
       })
     })
-    .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res.code === 200 && res.data) {
         currentOrderNo = res.data.orderNo;
-        handleBarcodeResult(res.data);
+        handleBarcodeResult(res.data, amount);
       } else {
         showResult('fail', '支付失败', res.message || '未知错误', amount);
       }
     })
     .catch(function(e) {
-      showResult('fail', '请求异常', e.message, amount);
+      showResult('fail', '请求异常', e.message || '网络错误', amount);
     })
     .finally(function() {
       btn.disabled = false; btn.textContent = '确认收款';
+      document.getElementById('barcodeLoading').classList.remove('active');
+      document.getElementById('authCodeInput').value = '';
+      lastScanCode = '';
     });
   }
 
-  function handleBarcodeResult(data) {
-    var amount = data.payAmount || getAmount();
+  function handleBarcodeResult(data, amount) {
+    amount = data.payAmount || amount;
     if (data.isSuccess || data.payStatus === 1 || 'SUCCESS' === data.payStatus) {
       showResult('success', '支付成功', '收款已到账', amount, {
         '订单号': data.orderNo,
-        '交易号': data.channelTradeNo,
-        '付款方': data.buyerLogonId || data.buyerUserId
+        '交易号': data.channelTradeNo || '-',
+        '付款方': data.buyerLogonId || data.buyerUserId || '-'
       });
     } else if (data.isPaying || 'PAYING' === data.payStatus || 'PENDING' === data.payStatus) {
       showResult('paying', '用户支付中', data.subMsg || '用户正在输入密码，请稍后查询订单状态', amount, {
@@ -512,69 +732,206 @@
       });
       startPolling(data.orderNo, 'barcode');
     } else {
-      showResult('fail', '支付失败', data.subMsg || data.msg || '付款码无效或已过期', amount);
+      showResult('fail', '支付失败', data.subMsg || data.msg || data.message || '付款码无效或已过期', amount);
     }
   }
 
-  function startFacePay() {
-    var faceArea = document.getElementById('faceArea');
-    faceArea.classList.add('scanning');
-    setTimeout(function() {
-      faceArea.classList.remove('scanning');
-      var mockFaceCode = 'FACE' + Date.now().toString().slice(-8);
-      document.getElementById('openIdInput').value = mockFaceCode;
-    }, 2000);
+  function initFacepaySdk() {
+    if (facepaySdkReady) return;
+    setFaceStatus('loading', 'SDK初始化中');
+    if (currentChannel === 'WECHAT_PAY') {
+      loadWxFacepaySdk();
+    } else if (currentChannel === 'ALIPAY') {
+      loadAliFacepaySdk();
+    } else {
+      setFaceStatus('error', '当前渠道暂不支持刷脸');
+      document.getElementById('faceSdkHint').textContent = '请选择微信或支付宝刷脸';
+    }
   }
 
-  function submitFacePay() {
-    var amount = getAmount(); if (!amount) return;
-    var faceCode = document.getElementById('openIdInput').value.trim();
+  function setFaceStatus(type, text) {
+    var el = document.getElementById('faceSdkStatus');
+    el.className = 'face-sdk-status ' + type;
+    el.textContent = text;
+  }
 
-    var orderNo = genOrderNo();
+  function loadWxFacepaySdk() {
+    if (document.getElementById('wx-facepay-script')) { return; }
+    var s = document.createElement('script');
+    s.id = 'wx-facepay-script';
+    s.src = 'https://wx.gtimg.com/wxpayface/wxpayface-1.3.0.js';
+    s.onerror = function() {
+      setFaceStatus('error', '微信SDK加载失败');
+      document.getElementById('faceSdkHint').textContent = '微信刷脸SDK加载失败，将使用模拟模式';
+      facepaySdkReady = true;
+    };
+    s.onload = function() {
+      if (window.WxPayFace) {
+        try {
+          WxPayFace.init({
+            appid: '',
+            mch_id: merchantNo || '',
+            sub_appid: '',
+            sub_mch_id: '',
+            store_id: '0001',
+            store_name: '收银台'
+          });
+          wxFacepaySdk = WxPayFace;
+          setFaceStatus('ready', '微信刷脸SDK已就绪');
+          document.getElementById('faceSdkHint').innerHTML = '✅ 微信刷脸SDK已就绪<br/>点击按钮开始识别';
+          facepaySdkReady = true;
+        } catch(e) {
+          setFaceStatus('error', '微信SDK初始化失败');
+          document.getElementById('faceSdkHint').textContent = '微信SDK初始化失败：' + e.message;
+          facepaySdkReady = true;
+        }
+      } else {
+        setFaceStatus('ready', '兼容模式（仅预览）');
+        document.getElementById('faceSdkHint').innerHTML = '⚠️ 运行环境不支持微信原生刷脸<br/>请在微信刷脸设备上使用，或使用OpenID调试';
+        facepaySdkReady = true;
+      }
+    };
+    document.head.appendChild(s);
+  }
+
+  function loadAliFacepaySdk() {
+    if (document.getElementById('ali-facepay-script')) { return; }
+    setFaceStatus('loading', '支付宝SDK加载中');
+    var s = document.createElement('script');
+    s.id = 'ali-facepay-script';
+    s.src = 'https://gw.alipayobjects.com/as/g/facepay/facepayjs/1.0.0/facepay.min.js';
+    s.onerror = function() {
+      setFaceStatus('error', '支付宝SDK加载失败');
+      document.getElementById('faceSdkHint').textContent = '支付宝刷脸SDK加载失败，将使用模拟模式';
+      facepaySdkReady = true;
+    };
+    s.onload = function() {
+      if (window.alipay && window.alipay.facepay) {
+        aliFacepaySdk = window.alipay.facepay;
+        setFaceStatus('ready', '支付宝刷脸SDK已就绪');
+        document.getElementById('faceSdkHint').innerHTML = '✅ 支付宝刷脸SDK已就绪<br/>点击按钮开始识别';
+        facepaySdkReady = true;
+      } else {
+        setFaceStatus('ready', '兼容模式（仅预览）');
+        document.getElementById('faceSdkHint').innerHTML = '⚠️ 运行环境不支持支付宝原生刷脸<br/>请在支付宝刷脸设备上使用，或使用OpenID调试';
+        facepaySdkReady = true;
+      }
+    };
+    document.head.appendChild(s);
+  }
+
+  function startFacePay() {
+    var amount = getAmount(); if (!amount) return;
     var btn = document.getElementById('facepayBtn');
     btn.disabled = true; btn.textContent = '识别中...';
+    document.getElementById('faceLoading').classList.add('active');
 
-    fetch('/api/pay/facepay', {
+    if (currentChannel === 'WECHAT_PAY' && wxFacepaySdk) {
+      try {
+        WxPayFace.getWxpayfaceCode({
+          appid: '',
+          mch_id: merchantNo || '',
+          store_id: '0001',
+          telephonenumber: '',
+          openid: '',
+          ask_face_permit: '1',
+          face_code_type: '1',
+          out_trade_no: genOrderNo(),
+          total_fee: Math.round(parseFloat(amount) * 100),
+          success: function(res) {
+            currentFaceCode = res.wxpayface_code || res.face_code || '';
+            currentOpenId = res.openid || '';
+            submitFacePay(amount, currentFaceCode, currentOpenId);
+          },
+          error: function(err) {
+            console.error('微信刷脸失败:', err);
+            document.getElementById('faceLoading').classList.remove('active');
+            btn.disabled = false; btn.textContent = '开始刷脸支付';
+            alert('刷脸识别失败：' + (err.msg || err.err_msg || JSON.stringify(err)));
+          }
+        });
+        return;
+      } catch (e) {
+        console.warn('原生微信刷脸调用失败，使用调试模式:', e);
+      }
+    }
+
+    if (currentChannel === 'ALIPAY' && aliFacepaySdk) {
+      try {
+        aliFacepaySdk.startFacePay({
+          amount: Math.round(parseFloat(amount) * 100),
+          timeout: 15,
+          success: function(res) {
+            currentFaceCode = res.ftoken || res.face_code || '';
+            currentOpenId = res.user_id || res.alipay_user_id || '';
+            submitFacePay(amount, currentFaceCode, currentOpenId);
+          },
+          error: function(err) {
+            console.error('支付宝刷脸失败:', err);
+            document.getElementById('faceLoading').classList.remove('active');
+            btn.disabled = false; btn.textContent = '开始刷脸支付';
+            alert('刷脸识别失败：' + (err.msg || JSON.stringify(err)));
+          }
+        });
+        return;
+      } catch (e) {
+        console.warn('原生支付宝刷脸调用失败，使用调试模式:', e);
+      }
+    }
+
+    var debugOpenId = document.getElementById('openIdInput').value.trim();
+    if (debugOpenId) {
+      submitFacePay(amount, 'FACE' + Date.now().toString().slice(-8), debugOpenId);
+    } else {
+      document.getElementById('faceLoading').classList.remove('active');
+      btn.disabled = false; btn.textContent = '开始刷脸支付';
+      alert('当前环境不支持原生刷脸SDK，请在刷脸设备上运行，或在输入框填写用户OpenID调试');
+    }
+  }
+
+  function submitFacePay(amount, faceCode, openId) {
+    var orderNo = genOrderNo();
+    cashFetch(cashApiBase + '/facepay', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         merchantOrderNo: orderNo,
         payAmount: parseFloat(amount),
         payChannel: currentChannel,
-        faceCode: faceCode.length >= 8 ? faceCode : '',
-        openId: faceCode,
-        productSubject: getProduct(),
-        notifyUrl: 'https://callback.example.com/notify'
+        faceCode: faceCode || '',
+        openId: openId || '',
+        productSubject: getProduct()
       })
     })
-    .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res.code === 200 && res.data) {
         currentOrderNo = res.data.orderNo;
         handleFaceResult(res.data, amount);
       } else {
-        showResult('fail', '识别失败', res.message || '未知错误', amount);
+        showResult('fail', '支付失败', res.message || '未知错误', amount);
       }
     })
     .catch(function(e) {
-      showResult('fail', '请求异常', e.message, amount);
+      showResult('fail', '请求异常', e.message || '网络错误', amount);
     })
     .finally(function() {
+      var btn = document.getElementById('facepayBtn');
       btn.disabled = false; btn.textContent = '开始刷脸支付';
+      document.getElementById('faceLoading').classList.remove('active');
     });
   }
 
   function handleFaceResult(data, amount) {
+    amount = data.payAmount || amount;
     if (data.isSuccess || data.payStatus === 1 || 'SUCCESS' === data.payStatus) {
       showResult('success', '刷脸成功', '支付已完成', amount, {
         '订单号': data.orderNo,
-        '交易号': data.channelTradeNo,
-        '用户': data.buyerLogonId || data.openId
+        '交易号': data.channelTradeNo || '-',
+        '用户': data.buyerLogonId || data.openId || '-'
       });
     } else if (data.isNeedAuth || 'NEED_AUTH' === data.payStatus) {
       showResult('paying', '需要再次验证', data.subMsg || '请再次刷脸确认支付', amount, {
         '订单号': data.orderNo,
-        'Token': data.faceAuthToken || '-'
+        '验证Token': data.faceAuthToken || '-'
       });
     } else if (data.isPaying || 'PAYING' === data.payStatus || 'PENDING' === data.payStatus) {
       showResult('paying', '确认中', data.subMsg || '请在手机上确认支付', amount, {
@@ -582,7 +939,7 @@
       });
       startPolling(data.orderNo, 'facepay');
     } else {
-      showResult('fail', '支付失败', data.subMsg || data.msg || '人脸识别未通过', amount);
+      showResult('fail', '支付失败', data.subMsg || data.msg || data.message || '人脸识别未通过', amount);
     }
   }
 
@@ -590,43 +947,48 @@
     var amount = getAmount(); if (!amount) return;
     var orderNo = genOrderNo();
     currentOrderNo = orderNo;
+    document.getElementById('qrBtn').disabled = true;
+    document.getElementById('qrBtn').textContent = '生成中...';
+    document.getElementById('qrLoading').classList.add('active');
 
-    fetch('/api/pay/aggregate/order', {
+    cashFetch(cashApiBase + '/aggregate/order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         merchantOrderNo: orderNo,
         payAmount: parseFloat(amount),
-        productSubject: getProduct(),
-        notifyUrl: 'https://callback.example.com/notify'
+        productSubject: getProduct()
       })
     })
-    .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res.code === 200 && res.data) {
         currentOrderNo = res.data.orderNo;
-        fetch('/api/pay/aggregate/order/' + res.data.orderNo + '/qrcode?size=200')
-          .then(function(r) { return r.json(); })
+        cashFetch(cashApiBase + '/aggregate/order/' + res.data.orderNo + '/qrcode?size=200')
           .then(function(qrRes) {
             if (qrRes.code === 200 && qrRes.data) {
-              var box = document.querySelector('.qrcode-box');
+              var box = document.getElementById('qrcodeBox');
               box.innerHTML = '<img src="' + qrRes.data + '" alt="收款码"/>';
               startPolling(res.data.orderNo, 'qr');
+            } else {
+              alert('生成二维码失败: ' + (qrRes.message || ''));
             }
           });
       } else {
         alert(res.message || '生成二维码失败');
       }
     })
-    .catch(function(e) { alert('生成失败: ' + e.message); });
+    .catch(function(e) { alert('生成失败: ' + (e.message || '网络错误')); })
+    .finally(function() {
+      document.getElementById('qrBtn').disabled = false;
+      document.getElementById('qrBtn').textContent = '生成收款码';
+      document.getElementById('qrLoading').classList.remove('active');
+    });
   }
 
   function refreshQrCode() { generateQrCode(); }
 
   function queryQrOrder() {
     if (!currentOrderNo) { alert('暂无订单'); return; }
-    fetch('/api/pay/aggregate/order/' + currentOrderNo)
-      .then(function(r) { return r.json(); })
+    cashFetch(cashApiBase + '/aggregate/order/' + currentOrderNo)
       .then(function(res) {
         if (res.code === 200 && res.data) {
           var d = res.data;
@@ -634,29 +996,31 @@
             stopPolling();
             showResult('success', '支付成功', '用户已完成支付', d.payAmount, {
               '订单号': d.orderNo,
-              '支付渠道': d.payChannel
+              '支付渠道': d.payChannel || '-'
             });
-          } else if (d.payStatus === 0 || 'PENDING' === d.payStatus) {
+          } else if (d.payStatus === 0 || d.payStatus == null || 'PENDING' === d.payStatus) {
             alert('等待用户支付中...');
           } else {
             alert('订单状态: ' + (d.payStatusDesc || d.payStatus));
           }
+        } else {
+          alert('查询失败: ' + (res.message || ''));
         }
-      });
+      })
+      .catch(function(e) { alert('查询异常: ' + e.message); });
   }
 
   function startPolling(orderNo, type) {
     stopPolling();
     var count = 0;
     var maxCount = 30;
-    var url = type === 'qr' ? '/api/pay/aggregate/order/' + orderNo :
-              (type === 'barcode' ? '/api/pay/barcode/retry/' + orderNo :
-                                     '/api/pay/facepay/retry/' + orderNo);
+    var url = type === 'qr' ? (cashApiBase + '/aggregate/order/' + orderNo)
+          : (type === 'barcode' ? (cashApiBase + '/barcode/retry/' + orderNo)
+                                : (cashApiBase + '/facepay/retry/' + orderNo));
     pollingTimer = setInterval(function() {
       count++;
       if (count > maxCount) { stopPolling(); return; }
-      fetch(url)
-        .then(function(r) { return r.json(); })
+      cashFetch(url)
         .then(function(res) {
           if (res.code === 200 && res.data) {
             var d = res.data;
@@ -664,9 +1028,9 @@
               stopPolling();
               showResult('success', '支付成功', '收款已到账', d.payAmount, {
                 '订单号': d.orderNo,
-                '交易号': d.channelTradeNo
+                '交易号': d.channelTradeNo || '-'
               });
-            } else if (d.payStatus === 2 || 'FAIL' === d.payStatus || d.code === 'PAY_FAIL') {
+            } else if (d.payStatus === 2 || 'FAIL' === d.payStatus || 'PAY_FAIL' === d.code) {
               stopPolling();
               showResult('fail', '支付失败', d.subMsg || d.msg || '用户取消支付', d.payAmount);
             }
@@ -717,9 +1081,16 @@
     document.getElementById('amountInput').value = '';
     document.getElementById('authCodeInput').value = '';
     document.getElementById('openIdInput').value = '';
+    lastScanCode = '';
     currentOrderNo = '';
-    var box = document.querySelector('.qrcode-box');
-    if (box) box.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:13px;">点击生成收款码</div>';
+    currentFaceCode = '';
+    var box = document.getElementById('qrcodeBox');
+    box.innerHTML = '<div class="qrcode-empty">点击生成收款码</div>';
+    if (scanMode === 'camera') {
+      var btn = document.getElementById('barcodeBtn');
+      btn.textContent = '等待扫描付款码...';
+      btn.disabled = true;
+    }
     setTimeout(function() { document.getElementById('amountInput').focus(); }, 100);
   }
 
@@ -731,7 +1102,16 @@
     if (e.key === 'Escape') closeModal();
   });
 
-  setTimeout(function() { document.getElementById('amountInput').focus(); }, 100);
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden && scanMode === 'camera') {
+      stopScanner();
+    } else if (!document.hidden && currentPayMode === 'barcode' && scanMode === 'camera') {
+      startScanner();
+    }
+  });
+
+  initCashier();
+  setTimeout(function() { document.getElementById('amountInput').focus(); }, 200);
 </script>
 </body>
 </html>

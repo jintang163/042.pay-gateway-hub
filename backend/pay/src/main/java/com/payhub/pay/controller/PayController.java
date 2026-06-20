@@ -8,6 +8,7 @@ import com.payhub.pay.dto.vo.OrderAttributionVO;
 import com.payhub.pay.dto.vo.OverviewStatsVO;
 import com.payhub.pay.dto.vo.SuccessRateTrendVO;
 import com.payhub.pay.entity.PayOrder;
+import com.payhub.pay.service.AggregateCodePayService;
 import com.payhub.pay.service.DashboardService;
 import com.payhub.pay.service.OrderAttributionService;
 import com.payhub.pay.service.PayOrderService;
@@ -35,6 +36,9 @@ public class PayController {
 
     @Autowired
     private OrderAttributionService orderAttributionService;
+
+    @Autowired
+    private AggregateCodePayService aggregateCodePayService;
 
     @PostMapping("/unifiedorder")
     public Result<UnifiedOrderResponse> unifiedOrder(@Valid @RequestBody UnifiedOrderRequest request,
@@ -167,6 +171,49 @@ public class PayController {
             log.warn("读取通知请求体失败", e);
         }
         return payOrderService.handleNotify(channel, params, body.toString());
+    }
+
+    @PostMapping("/aggregate/order")
+    public Result<AggregateCodeOrderResponse> createAggregateOrder(
+            @Valid @RequestBody AggregateCodeOrderRequest request,
+            HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        if (merchantNo != null) {
+            request.setMerchantNo(merchantNo);
+        }
+        String clientIp = getClientIp(httpRequest);
+        if (clientIp != null && request.getClientIp() == null) {
+            request.setClientIp(clientIp);
+        }
+        AggregateCodeOrderResponse response = aggregateCodePayService.createOrder(request);
+        return Result.success(response);
+    }
+
+    @GetMapping("/aggregate/order/{orderNo}")
+    public Result<AggregateCodeOrderResponse> getAggregateOrder(
+            @PathVariable String orderNo,
+            HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        var queryResp = aggregateCodePayService.queryOrder(orderNo, merchantNo);
+        AggregateCodeOrderResponse response = AggregateCodeOrderResponse.builder()
+                .orderNo(queryResp.getOrderNo())
+                .merchantOrderNo(queryResp.getMerchantOrderNo())
+                .payAmount(queryResp.getPayAmount())
+                .payStatus(queryResp.getPayStatus())
+                .payChannel(queryResp.getPayChannel())
+                .build();
+        if (queryResp.getQrCodeUrl() != null) {
+            response.setQrCodeUrl(queryResp.getQrCodeUrl());
+        }
+        return Result.success(response);
+    }
+
+    @GetMapping("/aggregate/order/{orderNo}/qrcode")
+    public Result<String> getAggregateQrCode(
+            @PathVariable String orderNo,
+            @RequestParam(defaultValue = "200") int size) {
+        String qrBase64 = aggregateCodePayService.generateQrCodeBase64(orderNo, size);
+        return Result.success(qrBase64);
     }
 
     @GetMapping("/order/list")
