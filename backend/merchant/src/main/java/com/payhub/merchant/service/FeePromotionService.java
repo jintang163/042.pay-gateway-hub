@@ -31,4 +31,6 @@ public interface FeePromotionService extends IService<FeePromotion> {
     FeePromotionCalcResult calculatePromotionFee(String merchantNo, BigDecimal originalFee, BigDecimal originalFeeRate, BigDecimal amount);
 
     void bindNewMerchantPromotion(String merchantNo, String merchantName, String industryCode);
+
+    void refreshPromotionStatus();
 }

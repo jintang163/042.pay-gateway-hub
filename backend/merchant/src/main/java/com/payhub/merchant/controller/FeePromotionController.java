@@ -104,6 +104,21 @@ public class FeePromotionController {
         return Result.success(vo);
     }
 
+    @GetMapping("/merchant/fee-promotion/current-best/{merchantNo}")
+    public Result<MerchantFeePromotionVO> getCurrentBestPromotionByMerchantNo(@PathVariable String merchantNo) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (currentMerchantNo == null) {
+                throw new BusinessException(ResultCode.NOT_LOGIN, "请先登录");
+            }
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的优惠活动");
+            }
+        }
+        MerchantFeePromotionVO vo = feePromotionService.getCurrentBestPromotion(merchantNo);
+        return Result.success(vo);
+    }
+
     @GetMapping("/merchant/fee-promotion/{merchantNo}/list")
     public Result<List<MerchantFeePromotionVO>> listMerchantPromotionsByAdmin(@PathVariable String merchantNo) {
         if (!CurrentUserContext.isAdmin()) {

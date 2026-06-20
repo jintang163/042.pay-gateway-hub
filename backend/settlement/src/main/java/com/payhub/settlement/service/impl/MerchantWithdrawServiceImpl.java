@@ -88,7 +88,19 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
             throw new BusinessException(ResultCode.PARAM_ERROR, "可提现余额不足");
         }
 
-        BigDecimal feeAmount = calculateFee(request.getWithdrawAmount(), request.getWithdrawType());
+        BigDecimal feeAmount;
+        if (feePromotionService != null && WithdrawTypeEnum.INSTANT.getCode().equals(request.getWithdrawType())) {
+            com.payhub.merchant.dto.FeePromotionCalcResult promoResult =
+                    calculateFeeWithPromotion(request.getMerchantNo(), request.getWithdrawAmount(), request.getWithdrawType());
+            feeAmount = promoResult.getActualFee();
+            if (promoResult.getHasPromotion() != null && promoResult.getHasPromotion()) {
+                log.info("提现申请享受费率优惠: merchantNo={}, originalFee={}, actualFee={}, promotionNo={}",
+                        request.getMerchantNo(), promoResult.getOriginalFee(), promoResult.getActualFee(),
+                        promoResult.getPromotionNo());
+            }
+        } else {
+            feeAmount = calculateFee(request.getWithdrawAmount(), request.getWithdrawType());
+        }
         BigDecimal actualAmount = request.getWithdrawAmount().subtract(feeAmount);
 
         MerchantInfo merchantInfo = getMerchantInfo(request.getMerchantNo());
@@ -373,23 +385,34 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
         WithdrawTypeEnum type = WithdrawTypeEnum.getByCode(withdrawType);
 
         com.payhub.merchant.dto.FeePromotionCalcResult result = new com.payhub.merchant.dto.FeePromotionCalcResult();
+        result.setAmount(amount);
         result.setOriginalFee(originalFee);
         result.setOriginalFeeRate(type != null ? type.getFeeRate() : BigDecimal.ZERO);
         result.setActualFee(originalFee);
+        result.setActualAmount(amount.subtract(originalFee));
         result.setSavedAmount(BigDecimal.ZERO);
         result.setHasPromotion(false);
-
-        if (feePromotionService == null) {
-            result.setCalcDetail("费率优惠服务未启用");
-            return result;
-        }
+        result.setPromotionApplied(false);
+        result.setPromoSaving(BigDecimal.ZERO);
 
         if (!WithdrawTypeEnum.INSTANT.getCode().equals(withdrawType)) {
             result.setCalcDetail("T+1到账免手续费");
             return result;
         }
 
-        return feePromotionService.calculatePromotionFee(merchantNo, originalFee, type.getFeeRate(), amount);
+        if (feePromotionService == null) {
+            result.setCalcDetail("费率优惠服务未启用");
+            return result;
+        }
+
+        com.payhub.merchant.dto.FeePromotionCalcResult promoResult =
+                feePromotionService.calculatePromotionFee(merchantNo, originalFee, type.getFeeRate(), amount);
+
+        promoResult.setAmount(amount);
+        promoResult.setActualAmount(amount.subtract(promoResult.getActualFee()));
+        promoResult.setPromotionApplied(promoResult.getHasPromotion());
+        promoResult.setPromoSaving(promoResult.getSavedAmount());
+        return promoResult;
     }
 
     private MerchantWithdrawVO convertToVO(MerchantWithdraw withdraw) {

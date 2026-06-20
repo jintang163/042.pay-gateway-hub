@@ -434,7 +434,7 @@
     fetch('/api/merchant/fee-promotion/current-best/' + merchantNo)
       .then(res => res.json())
       .then(res => {
-        if (res.code === 0 && res.data) {
+        if (res.code === 200 && res.data) {
           currentPromotion = res.data;
           showPromotionBanner(res.data);
           startCountdown(res.data.remainingSeconds);
@@ -493,7 +493,7 @@
     fetch(apiBase + '/balance/' + merchantNo)
       .then(res => res.json())
       .then(res => {
-        if (res.code === 0) {
+        if (res.code === 200) {
           var data = res.data;
           document.getElementById('availableBalance').textContent = '¥' + formatAmount(data.availableBalance);
           document.getElementById('pendingAmount').textContent = '¥' + formatAmount(data.pendingWithdrawAmount);
@@ -508,7 +508,7 @@
     fetch('/api/merchant/' + merchantNo)
       .then(res => res.json())
       .then(res => {
-        if (res.code === 0 && res.data) {
+        if (res.code === 200 && res.data) {
           var data = res.data;
           if (data.settlementBankName) {
             document.getElementById('bankName').textContent = data.settlementBankName;
@@ -568,7 +568,7 @@
     fetch(url)
       .then(res => res.json())
       .then(res => {
-        if (res.code === 0 && res.data) {
+        if (res.code === 200 && res.data) {
           var result = res.data;
           document.getElementById('displayAmount').textContent = '¥' + formatAmount(result.amount);
           document.getElementById('displayFee').textContent = '¥' + formatAmount(result.actualFee);
@@ -622,7 +622,7 @@
     .then(res => {
       btn.disabled = false;
       btn.textContent = '确认提现';
-      if (res.code === 0) {
+      if (res.code === 200) {
         if (amount >= 50000) {
           showModal('success', '申请已提交', '大额提现已提交，需人工审核，请耐心等待');
         } else {
@@ -648,7 +648,7 @@
     fetch(apiBase + '/list?merchantNo=' + merchantNo + '&size=5')
       .then(res => res.json())
       .then(res => {
-        if (res.code === 0) {
+        if (res.code === 200) {
           var records = res.data.records || [];
           var html = '';
           if (records.length === 0) {

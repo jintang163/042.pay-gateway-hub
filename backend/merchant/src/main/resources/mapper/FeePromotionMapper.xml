@@ -72,8 +72,8 @@
               OR (p.target_type = 3 AND pm.id IS NOT NULL AND pm.status = 1)
               OR (p.target_type = 4 AND pm.id IS NOT NULL AND pm.status = 1)
           )
-          AND (p.total_quota IS NULL OR p.used_quota < p.total_quota)
-          AND (pm.per_merchant_quota IS NULL OR pm.used_quota < pm.per_merchant_quota)
+          AND (p.total_quota IS NULL OR p.total_quota = 0 OR p.used_quota < p.total_quota)
+          AND (pm.total_quota IS NULL OR pm.total_quota = 0 OR pm.used_quota < pm.total_quota)
         ORDER BY p.promotion_type ASC, p.created_at DESC
     </select>
 

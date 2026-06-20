@@ -12,6 +12,8 @@ public enum ResultCode {
     UNAUTHORIZED(401, "未授权"),
     FORBIDDEN(403, "禁止访问"),
     NOT_FOUND(404, "资源不存在"),
+    NOT_LOGIN(401, "未登录"),
+    PERMISSION_DENIED(403, "无权限"),
 
     MERCHANT_NOT_EXIST(1001, "商户不存在"),
     MERCHANT_AUDIT_PENDING(1002, "商户审核中"),

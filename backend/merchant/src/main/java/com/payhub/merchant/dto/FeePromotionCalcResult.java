@@ -10,6 +10,8 @@ public class FeePromotionCalcResult implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    private BigDecimal amount;
+
     private String promotionNo;
 
     private String promotionName;
@@ -28,9 +30,15 @@ public class FeePromotionCalcResult implements Serializable {
 
     private BigDecimal actualFee;
 
+    private BigDecimal actualAmount;
+
     private BigDecimal savedAmount;
 
     private Boolean hasPromotion;
+
+    private Boolean promotionApplied;
+
+    private BigDecimal promoSaving;
 
     private String calcDetail;
 }

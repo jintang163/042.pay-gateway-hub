@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>费率优惠活动管理</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      background: #f5f6fa;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    h1 { font-size: 22px; color: #333; }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-primary {
+      background: #1677ff;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #0958d9; }
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #d9d9d9;
+      background: #fff;
+      cursor: pointer;
+    }
+    .btn-sm:hover { border-color: #1677ff; color: #1677ff; }
+    .btn-sm.danger { color: #ff4d4f; border-color: #ff4d4f; }
+    .btn-sm.danger:hover { background: #fff1f0; }
+    .btn-sm.success { color: #52c41a; border-color: #52c41a; }
+    .btn-sm.success:hover { background: #f6ffed; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    th { color: #999; font-weight: 500; font-size: 13px; }
+    td { color: #333; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+    .status-0 { background: #f5f5f5; color: #999; }
+    .status-1 { background: #e6f7ff; color: #0958d9; }
+    .status-2 { background: #f6ffed; color: #389e0d; }
+    .status-3 { background: #f5f5f5; color: #999; }
+    .status-4 { background: #fff1f0; color: #cf1322; }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 560px;
+      margin: 60px auto;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+    .form-input:focus, .form-select:focus { border-color: #1677ff; }
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+    .form-row .form-group { flex: 1; }
+    .modal-footer {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+    .btn-cancel {
+      background: #fff;
+      border: 1px solid #d9d9d9;
+      color: #333;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 0;
+      color: #999;
+    }
+    .pagination {
+      margin-top: 16px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+    .pagination button {
+      padding: 6px 14px;
+      border: 1px solid #d9d9d9;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .pagination button.active {
+      background: #1677ff;
+      color: #fff;
+      border-color: #1677ff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>费率优惠活动管理</h1>
+      <button class="btn btn-primary" onclick="showCreateModal()">+ 新建活动</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>活动编号</th>
+          <th>活动名称</th>
+          <th>类型</th>
+          <th>目标</th>
+          <th>优惠方式</th>
+          <th>有效期</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="promotionList">
+        <tr><td colspan="8" class="empty-state">加载中...</td></tr>
+      </tbody>
+    </table>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <div class="modal" id="createModal">
+    <div class="modal-content">
+      <div class="modal-title" id="modalTitle">新建费率优惠活动</div>
+      <input type="hidden" id="editId"/>
+      <div class="form-group">
+        <label class="form-label">活动名称</label>
+        <input type="text" class="form-input" id="promotionName" placeholder="如：新商户首月0费率"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">活动描述</label>
+        <input type="text" class="form-input" id="promotionDesc" placeholder="活动描述"/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">活动类型</label>
+          <select class="form-select" id="promotionType">
+            <option value="1">新商户优惠</option>
+            <option value="2">节日特惠</option>
+            <option value="3">周年庆</option>
+            <option value="4">VIP专属</option>
+            <option value="5">自定义活动</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">目标范围</label>
+          <select class="form-select" id="targetType" onchange="onTargetTypeChange()">
+            <option value="1">全体商户</option>
+            <option value="2">指定行业</option>
+            <option value="3">指定商户</option>
+            <option value="4">新注册商户</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="targetValueGroup" style="display:none;">
+        <label class="form-label" id="targetValueLabel">目标值</label>
+        <input type="text" class="form-input" id="targetValue" placeholder="逗号分隔"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">优惠方式</label>
+        <select class="form-select" id="feeType" onchange="onFeeTypeChange()">
+          <option value="1">费率折扣</option>
+          <option value="2">固定手续费</option>
+          <option value="3">0手续费</option>
+        </select>
+      </div>
+      <div class="form-row" id="feeConfigRow">
+        <div class="form-group" id="discountFeeRateGroup">
+          <label class="form-label">优惠费率(%)</label>
+          <input type="number" class="form-input" id="discountFeeRate" placeholder="如0.05表示0.05%" step="0.01"/>
+        </div>
+        <div class="form-group" id="fixedFeeAmountGroup" style="display:none;">
+          <label class="form-label">固定手续费(元)</label>
+          <input type="number" class="form-input" id="fixedFeeAmount" placeholder="如0.1" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">单笔最高优惠(元)</label>
+          <input type="number" class="form-input" id="maxDiscountAmount" placeholder="0不限" step="0.01"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">开始时间</label>
+          <input type="datetime-local" class="form-input" id="startTime"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">结束时间</label>
+          <input type="datetime-local" class="form-input" id="endTime"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">持续天数(新商户)</label>
+          <input type="number" class="form-input" id="durationDays" placeholder="如30" min="1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">总使用次数(0不限)</label>
+          <input type="number" class="form-input" id="totalQuota" placeholder="0" min="0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">单商户次数(0不限)</label>
+          <input type="number" class="form-input" id="perMerchantQuota" placeholder="0" min="0"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注</label>
+        <input type="text" class="form-input" id="remark" placeholder="选填"/>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeCreateModal()">取消</button>
+        <button class="btn btn-primary" onclick="savePromotion()">保存</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  var apiBase = '/api/admin/fee-promotion';
+  var currentPage = 1;
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadList(1);
+  });
+
+  function loadList(page) {
+    currentPage = page;
+    fetch(apiBase + '/list?current=' + page + '&size=10')
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 200 && res.data) {
+          renderList(res.data.records);
+          renderPagination(res.data);
+        }
+      });
+  }
+
+  function renderList(records) {
+    var tbody = document.getElementById('promotionList');
+    if (!records || records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">暂无活动数据</td></tr>';
+      return;
+    }
+    var html = '';
+    records.forEach(function(item) {
+      var feeDesc = getFeeDesc(item);
+      var dateRange = formatDateRange(item);
+      html += '<tr>'
+        + '<td>' + (item.promotionNo || '') + '</td>'
+        + '<td>' + (item.promotionName || '') + '</td>'
+        + '<td>' + (item.promotionTypeDesc || '') + '</td>'
+        + '<td>' + (item.targetTypeDesc || '') + '</td>'
+        + '<td>' + feeDesc + '</td>'
+        + '<td>' + dateRange + '</td>'
+        + '<td><span class="status-badge status-' + item.status + '">' + (item.statusDesc || '') + '</span></td>'
+        + '<td>' + getActions(item) + '</td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+  }
+
+  function getFeeDesc(item) {
+    if (item.feeType === 3) return '0手续费';
+    if (item.feeType === 2) return '固定' + (item.fixedFeeAmount || 0) + '元';
+    if (item.feeType === 1) return '费率' + (item.discountFeeRate || 0) + '%';
+    return '';
+  }
+
+  function formatDateRange(item) {
+    if (!item.startTime && !item.endTime) return '-';
+    var s = item.startTime ? item.startTime.replace('T', ' ').substring(0, 16) : '?';
+    var e = item.endTime ? item.endTime.replace('T', ' ').substring(0, 16) : '?';
+    return s + '<br/>~ ' + e;
+  }
+
+  function getActions(item) {
+    var html = '';
+    if (item.status === 0) {
+      html += '<button class="btn-sm success" onclick="toggleStatus(' + item.id + ')">发布</button> ';
+    } else if (item.status === 1 || item.status === 2) {
+      html += '<button class="btn-sm danger" onclick="toggleStatus(' + item.id + ')">停用</button> ';
+    } else if (item.status === 4) {
+      html += '<button class="btn-sm success" onclick="toggleStatus(' + item.id + ')">启用</button> ';
+    }
+    if (item.status === 0 || item.status === 4) {
+      html += '<button class="btn-sm" onclick="editPromotion(' + item.id + ')">编辑</button> ';
+    }
+    if (item.status !== 2) {
+      html += '<button class="btn-sm danger" onclick="deletePromotion(' + item.id + ')">删除</button>';
+    }
+    return html;
+  }
+
+  function renderPagination(pageData) {
+    var pages = pageData.pages || 1;
+    var html = '';
+    for (var i = 1; i <= pages; i++) {
+      html += '<button class="' + (i === currentPage ? 'active' : '') + '" onclick="loadList(' + i + ')">' + i + '</button>';
+    }
+    document.getElementById('pagination').innerHTML = html;
+  }
+
+  function showCreateModal() {
+    document.getElementById('modalTitle').textContent = '新建费率优惠活动';
+    document.getElementById('editId').value = '';
+    document.getElementById('promotionName').value = '';
+    document.getElementById('promotionDesc').value = '';
+    document.getElementById('promotionType').value = '1';
+    document.getElementById('targetType').value = '1';
+    document.getElementById('targetValue').value = '';
+    document.getElementById('feeType').value = '3';
+    document.getElementById('discountFeeRate').value = '';
+    document.getElementById('fixedFeeAmount').value = '';
+    document.getElementById('maxDiscountAmount').value = '';
+    document.getElementById('startTime').value = '';
+    document.getElementById('endTime').value = '';
+    document.getElementById('durationDays').value = '';
+    document.getElementById('totalQuota').value = '0';
+    document.getElementById('perMerchantQuota').value = '0';
+    document.getElementById('remark').value = '';
+    onTargetTypeChange();
+    onFeeTypeChange();
+    document.getElementById('createModal').style.display = 'block';
+  }
+
+  function closeCreateModal() {
+    document.getElementById('createModal').style.display = 'none';
+  }
+
+  function editPromotion(id) {
+    fetch(apiBase + '/list?current=1&size=100')
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 200 && res.data) {
+          var item = res.data.records.find(function(r) { return r.id === id; });
+          if (item) {
+            document.getElementById('modalTitle').textContent = '编辑费率优惠活动';
+            document.getElementById('editId').value = item.id;
+            document.getElementById('promotionName').value = item.promotionName || '';
+            document.getElementById('promotionDesc').value = item.promotionDesc || '';
+            document.getElementById('promotionType').value = item.promotionType || '1';
+            document.getElementById('targetType').value = item.targetType || '1';
+            document.getElementById('targetValue').value = item.targetValue || '';
+            document.getElementById('feeType').value = item.feeType || '3';
+            document.getElementById('discountFeeRate').value = item.discountFeeRate || '';
+            document.getElementById('fixedFeeAmount').value = item.fixedFeeAmount || '';
+            document.getElementById('maxDiscountAmount').value = item.maxDiscountAmount || '';
+            if (item.startTime) document.getElementById('startTime').value = item.startTime.replace('T', ' ').substring(0, 16);
+            if (item.endTime) document.getElementById('endTime').value = item.endTime.replace('T', ' ').substring(0, 16);
+            document.getElementById('durationDays').value = item.durationDays || '';
+            document.getElementById('totalQuota').value = item.totalQuota || 0;
+            document.getElementById('perMerchantQuota').value = item.perMerchantQuota || 0;
+            document.getElementById('remark').value = item.remark || '';
+            onTargetTypeChange();
+            onFeeTypeChange();
+            document.getElementById('createModal').style.display = 'block';
+          }
+        }
+      });
+  }
+
+  function onTargetTypeChange() {
+    var type = document.getElementById('targetType').value;
+    var group = document.getElementById('targetValueGroup');
+    var label = document.getElementById('targetValueLabel');
+    if (type === '2') {
+      group.style.display = 'block';
+      label.textContent = '行业编码(逗号分隔)';
+      document.getElementById('targetValue').placeholder = '如: RETAIL,FOOD';
+    } else if (type === '3') {
+      group.style.display = 'block';
+      label.textContent = '商户号(逗号分隔)';
+      document.getElementById('targetValue').placeholder = '如: M000001,M000002';
+    } else {
+      group.style.display = 'none';
+    }
+  }
+
+  function onFeeTypeChange() {
+    var type = document.getElementById('feeType').value;
+    document.getElementById('discountFeeRateGroup').style.display = type === '1' ? 'block' : 'none';
+    document.getElementById('fixedFeeAmountGroup').style.display = type === '2' ? 'block' : 'none';
+  }
+
+  function savePromotion() {
+    var name = document.getElementById('promotionName').value;
+    if (!name) { alert('请输入活动名称'); return; }
+
+    var data = {
+      promotionName: name,
+      promotionDesc: document.getElementById('promotionDesc').value,
+      promotionType: parseInt(document.getElementById('promotionType').value),
+      targetType: parseInt(document.getElementById('targetType').value),
+      targetValue: document.getElementById('targetValue').value,
+      feeType: parseInt(document.getElementById('feeType').value),
+      discountFeeRate: document.getElementById('discountFeeRate').value ? parseFloat(document.getElementById('discountFeeRate').value) : null,
+      fixedFeeAmount: document.getElementById('fixedFeeAmount').value ? parseFloat(document.getElementById('fixedFeeAmount').value) : null,
+      maxDiscountAmount: document.getElementById('maxDiscountAmount').value ? parseFloat(document.getElementById('maxDiscountAmount').value) : null,
+      durationDays: document.getElementById('durationDays').value ? parseInt(document.getElementById('durationDays').value) : null,
+      totalQuota: parseInt(document.getElementById('totalQuota').value) || 0,
+      perMerchantQuota: parseInt(document.getElementById('perMerchantQuota').value) || 0,
+      remark: document.getElementById('remark').value,
+      status: 0
+    };
+
+    var st = document.getElementById('startTime').value;
+    var et = document.getElementById('endTime').value;
+    if (st) data.startTime = st.replace(' ', 'T') + ':00';
+    if (et) data.endTime = et.replace(' ', 'T') + ':00';
+
+    var editId = document.getElementById('editId').value;
+    if (editId) data.id = parseInt(editId);
+
+    fetch(apiBase, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(res => {
+      if (res.code === 200) {
+        closeCreateModal();
+        loadList(currentPage);
+      } else {
+        alert(res.message || '保存失败');
+      }
+    });
+  }
+
+  function toggleStatus(id) {
+    fetch(apiBase + '/' + id + '/toggle', { method: 'POST' })
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 200) {
+          loadList(currentPage);
+        } else {
+          alert(res.message || '操作失败');
+        }
+      });
+  }
+
+  function deletePromotion(id) {
+    if (!confirm('确定删除此活动？')) return;
+    fetch(apiBase + '/' + id, { method: 'DELETE' })
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 200) {
+          loadList(currentPage);
+        } else {
+          alert(res.message || '删除失败');
+        }
+      });
+  }
+</script>
+</body>
+</html>

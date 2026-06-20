@@ -105,22 +105,28 @@ public class FeePromotionServiceImpl extends ServiceImpl<FeePromotionMapper, Fee
         }
 
         Integer currentStatus = promotion.getStatus();
+        LocalDateTime now = LocalDateTime.now();
+
         if (FeePromotionStatusEnum.DRAFT.getCode().equals(currentStatus)) {
-            promotion.setStatus(FeePromotionStatusEnum.NOT_STARTED.getCode());
-            log.info("活动发布: promotionNo={}", promotion.getPromotionNo());
+            if (promotion.getStartTime() != null && !promotion.getStartTime().isAfter(now)) {
+                promotion.setStatus(FeePromotionStatusEnum.ONGOING.getCode());
+                log.info("活动发布并直接生效: promotionNo={}", promotion.getPromotionNo());
+            } else {
+                promotion.setStatus(FeePromotionStatusEnum.NOT_STARTED.getCode());
+                log.info("活动发布(待生效): promotionNo={}", promotion.getPromotionNo());
+            }
         } else if (FeePromotionStatusEnum.NOT_STARTED.getCode().equals(currentStatus)
                 || FeePromotionStatusEnum.ONGOING.getCode().equals(currentStatus)) {
             promotion.setStatus(FeePromotionStatusEnum.DISABLED.getCode());
             log.info("活动停用: promotionNo={}", promotion.getPromotionNo());
         } else if (FeePromotionStatusEnum.DISABLED.getCode().equals(currentStatus)) {
-            LocalDateTime now = LocalDateTime.now();
             if (promotion.getEndTime() != null && promotion.getEndTime().isBefore(now)) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "活动已过期，无法重新启用");
             }
-            promotion.setStatus(promotion.getStartTime() != null && promotion.getStartTime().isBefore(now)
+            promotion.setStatus(promotion.getStartTime() != null && !promotion.getStartTime().isAfter(now)
                     ? FeePromotionStatusEnum.ONGOING.getCode()
                     : FeePromotionStatusEnum.NOT_STARTED.getCode());
-            log.info("活动重新启用: promotionNo={}", promotion.getPromotionNo());
+            log.info("活动重新启用: promotionNo={}, newStatus={}", promotion.getPromotionNo(), promotion.getStatus());
         } else {
             throw new BusinessException(ResultCode.PARAM_ERROR, "当前状态不允许切换");
         }
@@ -290,7 +296,6 @@ public class FeePromotionServiceImpl extends ServiceImpl<FeePromotionMapper, Fee
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void bindNewMerchantPromotion(String merchantNo, String merchantName, String industryCode) {
         LocalDateTime now = LocalDateTime.now();
         LambdaQueryWrapper<FeePromotion> wrapper = new LambdaQueryWrapper<>();
@@ -298,7 +303,7 @@ public class FeePromotionServiceImpl extends ServiceImpl<FeePromotionMapper, Fee
                 .eq(FeePromotion::getStatus, FeePromotionStatusEnum.ONGOING.getCode())
                 .le(FeePromotion::getStartTime, now)
                 .ge(FeePromotion::getEndTime, now)
-                .and(w -> w.isNull(FeePromotion::getTotalQuota).or().lt(FeePromotion::getUsedQuota, FeePromotion::getTotalQuota));
+                .and(w -> w.isNull(FeePromotion::getTotalQuota).or().eq(FeePromotion::getTotalQuota, 0).or().lt(FeePromotion::getUsedQuota, FeePromotion::getTotalQuota));
 
         List<FeePromotion> promotions = this.list(wrapper);
         for (FeePromotion promotion : promotions) {
@@ -325,6 +330,36 @@ public class FeePromotionServiceImpl extends ServiceImpl<FeePromotionMapper, Fee
                 promotionMerchantMapper.insert(pm);
                 log.info("新商户自动绑定费率优惠活动: merchantNo={}, promotionNo={}", merchantNo, promotion.getPromotionNo());
             }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refreshPromotionStatus() {
+        LocalDateTime now = LocalDateTime.now();
+
+        LambdaQueryWrapper<FeePromotion> notStartedWrapper = new LambdaQueryWrapper<>();
+        notStartedWrapper.eq(FeePromotion::getStatus, FeePromotionStatusEnum.NOT_STARTED.getCode())
+                .le(FeePromotion::getStartTime, now);
+        List<FeePromotion> toStartList = this.list(notStartedWrapper);
+        for (FeePromotion p : toStartList) {
+            p.setStatus(FeePromotionStatusEnum.ONGOING.getCode());
+            this.updateById(p);
+            log.info("活动自动生效: promotionNo={}", p.getPromotionNo());
+        }
+
+        LambdaQueryWrapper<FeePromotion> ongoingWrapper = new LambdaQueryWrapper<>();
+        ongoingWrapper.eq(FeePromotion::getStatus, FeePromotionStatusEnum.ONGOING.getCode())
+                .lt(FeePromotion::getEndTime, now);
+        List<FeePromotion> toEndList = this.list(ongoingWrapper);
+        for (FeePromotion p : toEndList) {
+            p.setStatus(FeePromotionStatusEnum.ENDED.getCode());
+            this.updateById(p);
+            log.info("活动自动结束: promotionNo={}", p.getPromotionNo());
+        }
+
+        if (!toStartList.isEmpty() || !toEndList.isEmpty()) {
+            log.info("活动状态刷新完成: activated={}, ended={}", toStartList.size(), toEndList.size());
         }
     }
 
@@ -436,6 +471,7 @@ public class FeePromotionServiceImpl extends ServiceImpl<FeePromotionMapper, Fee
         vo.setPromotionType(promotion.getPromotionType());
         FeePromotionTypeEnum typeEnum = FeePromotionTypeEnum.getByCode(promotion.getPromotionType());
         vo.setPromotionTypeDesc(typeEnum != null ? typeEnum.getDesc() : "");
+        vo.setPromotionTypeName(typeEnum != null ? typeEnum.getDesc() : "");
         vo.setFeeType(promotion.getFeeType());
         FeePromotionFeeTypeEnum feeTypeEnum = FeePromotionFeeTypeEnum.getByCode(promotion.getFeeType());
         vo.setFeeTypeDesc(feeTypeEnum != null ? feeTypeEnum.getDesc() : "");

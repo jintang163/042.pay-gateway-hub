@@ -23,6 +23,8 @@ public class MerchantFeePromotionVO implements Serializable {
 
     private String promotionTypeDesc;
 
+    private String promotionTypeName;
+
     private Integer feeType;
 
     private String feeTypeDesc;
