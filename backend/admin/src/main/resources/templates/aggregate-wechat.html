@@ -138,10 +138,19 @@
             if (s === 1) {
               clearInterval(timer);
               setTip('支付成功，正在跳转...', 'success');
+              var merchantNo = json.data.merchantNo || '';
+              var payAmount = json.data.payAmount || '';
               setTimeout(function() {
-                if (window.opener) { try { window.opener.postMessage({ status: 'SUCCESS', orderNo: orderNo }, '*'); } catch(e){} }
-                WeixinJSBridge && WeixinJSBridge.invoke && WeixinJSBridge.invoke('closeWindow');
-              }, 1000);
+                if (merchantNo) {
+                  window.location.href = gatewayDomain + '/ad/success/' + merchantNo
+                    + '?orderNo=' + encodeURIComponent(orderNo)
+                    + '&amount=' + encodeURIComponent(payAmount)
+                    + '&position=PAY_SUCCESS';
+                } else {
+                  if (window.opener) { try { window.opener.postMessage({ status: 'SUCCESS', orderNo: orderNo }, '*'); } catch(e){} }
+                  WeixinJSBridge && WeixinJSBridge.invoke && WeixinJSBridge.invoke('closeWindow');
+                }
+              }, 800);
             } else if (s === 2) {
               clearInterval(timer);
               setTip('支付失败，请重试或更换支付方式', 'error');

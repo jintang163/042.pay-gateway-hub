@@ -138,11 +138,20 @@
             if (s === 1) {
               clearInterval(timer);
               setTip('支付成功，正在跳转...', 'success');
+              var merchantNo = json.data.merchantNo || '';
+              var payAmount = json.data.payAmount || '';
               setTimeout(function() {
-                if (window.AlipayJSBridge) {
-                  try { AlipayJSBridge.call('closeWebview'); } catch(e){}
+                if (merchantNo) {
+                  window.location.href = gatewayDomain + '/ad/success/' + merchantNo
+                    + '?orderNo=' + encodeURIComponent(orderNo)
+                    + '&amount=' + encodeURIComponent(payAmount)
+                    + '&position=PAY_SUCCESS';
+                } else {
+                  if (window.AlipayJSBridge) {
+                    try { AlipayJSBridge.call('closeWebview'); } catch(e){}
+                  }
                 }
-              }, 1000);
+              }, 800);
             } else if (s === 2) {
               clearInterval(timer);
               setTip('支付失败，请重试或更换支付方式', 'error');

@@ -19,6 +19,8 @@ public class AggregateCodeQueryResponse implements Serializable {
 
     private String orderNo;
 
+    private String merchantNo;
+
     private String merchantOrderNo;
 
     private String payChannel;

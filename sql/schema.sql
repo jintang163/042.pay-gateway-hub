@@ -1070,3 +1070,96 @@ CREATE TABLE `report_push_record` (
     KEY `idx_start_end_date` (`start_date`, `end_date`),
     KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报表推送记录表';
+
+-- -----------------------------------------------
+-- 29. 商户广告配置表
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `merchant_ad` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `ad_code` VARCHAR(32) NOT NULL COMMENT '广告编号(唯一)',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号',
+  `ad_title` VARCHAR(128) NOT NULL COMMENT '广告标题',
+  `ad_description` VARCHAR(512) DEFAULT NULL COMMENT '广告描述',
+  `ad_image_url` VARCHAR(512) DEFAULT NULL COMMENT '广告图片URL',
+  `target_url` VARCHAR(512) NOT NULL COMMENT '跳转目标URL',
+  `position` VARCHAR(32) NOT NULL DEFAULT 'PAY_SUCCESS' COMMENT '展示位置: PAY_SUCCESS=支付成功页',
+  `cpc_price` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '单次点击价格(CPC,元)',
+  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序(值越大越靠前)',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态: 0=下架 1=上架',
+  `start_time` DATETIME DEFAULT NULL COMMENT '投放开始时间',
+  `end_time` DATETIME DEFAULT NULL COMMENT '投放结束时间',
+  `daily_budget` DECIMAL(14,4) NOT NULL DEFAULT 0.0000 COMMENT '每日预算(0=不限)',
+  `click_count` INT NOT NULL DEFAULT 0 COMMENT '累计点击量',
+  `impression_count` INT NOT NULL DEFAULT 0 COMMENT '累计曝光量',
+  `total_cost` DECIMAL(14,4) NOT NULL DEFAULT 0.0000 COMMENT '累计消耗',
+  `operator_id` VARCHAR(32) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(64) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '是否删除: 0=否 1=是',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ad_code` (`ad_code`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_position_status` (`position`, `status`),
+  KEY `idx_sort_order` (`sort_order`),
+  KEY `idx_start_end_time` (`start_time`, `end_time`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户广告配置表';
+
+-- -----------------------------------------------
+-- 30. 广告点击明细与统计
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS `ad_click_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `click_no` VARCHAR(32) NOT NULL COMMENT '点击流水号',
+  `ad_code` VARCHAR(32) NOT NULL COMMENT '广告编号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号(广告主)',
+  `order_no` VARCHAR(32) DEFAULT NULL COMMENT '关联订单号(若有)',
+  `pay_amount` DECIMAL(14,2) DEFAULT NULL COMMENT '关联订单金额',
+  `position` VARCHAR(32) NOT NULL DEFAULT 'PAY_SUCCESS' COMMENT '展示位置',
+  `cpc_price` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '本次点击单价',
+  `cost_amount` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '本次结算费用',
+  `user_agent` VARCHAR(512) DEFAULT NULL COMMENT '浏览器UA',
+  `client_ip` VARCHAR(64) DEFAULT NULL COMMENT '客户端IP',
+  `device_id` VARCHAR(128) DEFAULT NULL COMMENT '设备指纹ID',
+  `referer_url` VARCHAR(512) DEFAULT NULL COMMENT '来源页URL',
+  `target_url` VARCHAR(512) DEFAULT NULL COMMENT '跳转目标URL',
+  `click_time` DATETIME NOT NULL COMMENT '点击时间',
+  `click_date` DATE NOT NULL COMMENT '点击日期(便于统计)',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态: 0=无效 1=有效',
+  `invalid_reason` VARCHAR(255) DEFAULT NULL COMMENT '无效原因',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_click_no` (`click_no`),
+  KEY `idx_ad_code` (`ad_code`),
+  KEY `idx_merchant_no` (`merchant_no`),
+  KEY `idx_click_date` (`click_date`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_click_time` (`click_time`),
+  KEY `idx_merchant_date` (`merchant_no`, `click_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='广告点击明细表';
+
+CREATE TABLE IF NOT EXISTS `ad_stats_daily` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `stats_date` DATE NOT NULL COMMENT '统计日期',
+  `ad_code` VARCHAR(32) NOT NULL COMMENT '广告编号',
+  `merchant_no` VARCHAR(32) NOT NULL COMMENT '商户编号(广告主)',
+  `position` VARCHAR(32) NOT NULL DEFAULT 'PAY_SUCCESS' COMMENT '展示位置',
+  `impression_count` INT NOT NULL DEFAULT 0 COMMENT '曝光量',
+  `click_count` INT NOT NULL DEFAULT 0 COMMENT '点击量',
+  `valid_click_count` INT NOT NULL DEFAULT 0 COMMENT '有效点击量',
+  `invalid_click_count` INT NOT NULL DEFAULT 0 COMMENT '无效点击量',
+  `total_cost` DECIMAL(14,4) NOT NULL DEFAULT 0.0000 COMMENT '当日消耗金额(元)',
+  `ctr` DECIMAL(8,4) NOT NULL DEFAULT 0.0000 COMMENT '点击率(百分比)',
+  `avg_cpc` DECIMAL(10,4) NOT NULL DEFAULT 0.0000 COMMENT '平均点击价格',
+  `order_count` INT NOT NULL DEFAULT 0 COMMENT '关联订单数',
+  `order_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT '关联订单金额',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_date_ad_code` (`stats_date`, `ad_code`),
+  KEY `idx_merchant_date` (`merchant_no`, `stats_date`),
+  KEY `idx_ad_code` (`ad_code`),
+  KEY `idx_stats_date` (`stats_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='广告每日统计表';

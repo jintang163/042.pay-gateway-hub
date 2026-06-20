@@ -169,6 +169,7 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
 
         return AggregateCodeQueryResponse.builder()
                 .orderNo(order.getOrderNo())
+                .merchantNo(order.getMerchantNo())
                 .merchantOrderNo(order.getMerchantOrderNo())
                 .payChannel(order.getPayChannel())
                 .payType(order.getPayType())

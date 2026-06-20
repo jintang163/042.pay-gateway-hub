@@ -15,6 +15,15 @@ import type {
   ActivityQueryParams,
   ActivityPageResult,
 } from '@/types/marketing';
+import type {
+  MerchantAd,
+  MerchantAdSaveRequest,
+  AdDisplayVO,
+  AdClickReportRequest,
+  AdClickReportResult,
+  AdStatsOverviewVO,
+} from '@/types/ad';
+import type { PageResult } from '@/types/common';
 
 export const payLinkApi = {
   list: (params: PayLinkQueryParams) => {
@@ -101,5 +110,39 @@ export const activityApi = {
 
   remove: (id: number) => {
     return request.delete<void>(`/activity/${id}`);
+  },
+};
+
+export const adApi = {
+  list: (params: { current?: number; size?: number; adCode?: string; adTitle?: string; position?: string; status?: number }) => {
+    return request.get<PageResult<MerchantAd>>('/ad/list', params);
+  },
+
+  detail: (adCode: string) => {
+    return request.get<MerchantAd>(`/ad/${adCode}`);
+  },
+
+  save: (data: MerchantAdSaveRequest) => {
+    return request.post<void>('/ad/save', data);
+  },
+
+  toggle: (id: number) => {
+    return request.post<void>(`/ad/${id}/toggle`);
+  },
+
+  remove: (id: number) => {
+    return request.delete<void>(`/ad/${id}`);
+  },
+
+  getDisplay: (params: { merchantNo: string; position?: string; limit?: number }) => {
+    return request.get<AdDisplayVO[]>('/ad/display', params);
+  },
+
+  reportClick: (data: AdClickReportRequest) => {
+    return request.post<AdClickReportResult>('/ad/click', data);
+  },
+
+  statsOverview: (params: { startDate?: string; endDate?: string; adCode?: string; position?: string }) => {
+    return request.get<AdStatsOverviewVO>('/ad/stats/overview', params);
   },
 };
