@@ -43,6 +43,9 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
     @Autowired
     private UnifiedTransferService unifiedTransferService;
 
+    @Autowired(required = false)
+    private com.payhub.merchant.service.FeePromotionService feePromotionService;
+
     @Value("${payhub.merchant.withdraw.min-amount:10}")
     private BigDecimal minWithdrawAmount;
 
@@ -362,6 +365,31 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
             throw new BusinessException(ResultCode.PARAM_ERROR, "不支持的提现类型");
         }
         return amount.multiply(type.getFeeRate()).divide(HUNDRED, 2, BigDecimal.ROUND_HALF_UP);
+    }
+
+    @Override
+    public com.payhub.merchant.dto.FeePromotionCalcResult calculateFeeWithPromotion(String merchantNo, BigDecimal amount, Integer withdrawType) {
+        BigDecimal originalFee = calculateFee(amount, withdrawType);
+        WithdrawTypeEnum type = WithdrawTypeEnum.getByCode(withdrawType);
+
+        com.payhub.merchant.dto.FeePromotionCalcResult result = new com.payhub.merchant.dto.FeePromotionCalcResult();
+        result.setOriginalFee(originalFee);
+        result.setOriginalFeeRate(type != null ? type.getFeeRate() : BigDecimal.ZERO);
+        result.setActualFee(originalFee);
+        result.setSavedAmount(BigDecimal.ZERO);
+        result.setHasPromotion(false);
+
+        if (feePromotionService == null) {
+            result.setCalcDetail("费率优惠服务未启用");
+            return result;
+        }
+
+        if (!WithdrawTypeEnum.INSTANT.getCode().equals(withdrawType)) {
+            result.setCalcDetail("T+1到账免手续费");
+            return result;
+        }
+
+        return feePromotionService.calculatePromotionFee(merchantNo, originalFee, type.getFeeRate(), amount);
     }
 
     private MerchantWithdrawVO convertToVO(MerchantWithdraw withdraw) {

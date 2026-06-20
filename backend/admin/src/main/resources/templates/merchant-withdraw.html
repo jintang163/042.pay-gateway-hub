@@ -40,6 +40,62 @@
     h1 { font-size: 22px; color: #333; margin-bottom: 6px; }
     .sub { font-size: 13px; color: #999; }
 
+    .promotion-banner {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+      border-radius: 12px;
+      padding: 16px 20px;
+      color: #fff;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .promotion-banner::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 200px;
+      height: 200px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+    }
+    .promotion-banner .promo-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      position: relative;
+    }
+    .promotion-banner .promo-desc {
+      font-size: 12px;
+      opacity: 0.95;
+      margin-bottom: 8px;
+      position: relative;
+    }
+    .promotion-banner .promo-countdown {
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    .promotion-banner .countdown-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .promotion-banner .promo-tag {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      background: rgba(255,255,255,0.25);
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
     .balance-card {
       background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
       border-radius: 12px;
@@ -249,6 +305,16 @@
       <p class="sub">将结算余额提现至绑定银行卡</p>
     </div>
 
+    <div class="promotion-banner" id="promotionBanner" style="display:none;">
+      <span class="promo-tag" id="promoTag">限时优惠</span>
+      <div class="promo-title" id="promoTitle">新商户首月0费率</div>
+      <div class="promo-desc" id="promoDesc">活动期间提现手续费全免</div>
+      <div class="promo-countdown">
+        <span>⏰ 距离活动结束还剩</span>
+        <span class="countdown-badge" id="countdownBadge">--天--小时</span>
+      </div>
+    </div>
+
     <div class="balance-card">
       <div class="balance-label">可提现余额</div>
       <div class="balance-amount" id="availableBalance">¥0.00</div>
@@ -289,9 +355,17 @@
         <span>提现金额</span>
         <span class="highlight" id="displayAmount">¥0.00</span>
       </div>
+      <div class="row" id="originalFeeRow" style="display:none;">
+        <span>原始手续费</span>
+        <span style="text-decoration: line-through; color: #999;" id="displayOriginalFee">¥0.00</span>
+      </div>
       <div class="row">
-        <span>手续费</span>
+        <span>手续费 <span id="promoDiscountLabel" style="color:#07c160; display:none;">(已优惠)</span></span>
         <span class="highlight" id="displayFee">¥0.00</span>
+      </div>
+      <div class="row" id="promoSavingRow" style="display:none;">
+        <span>本次节省</span>
+        <span style="color:#07c160; font-weight:600;" id="displayPromoSaving">¥0.00</span>
       </div>
       <div class="row">
         <span>实际到账</span>
@@ -346,12 +420,74 @@
   var apiBase = '/api/merchant/withdraw';
   var selectedType = 1;
   var instantFeeRate = 0.001;
+  var currentPromotion = null;
+  var countdownTimer = null;
 
   document.addEventListener('DOMContentLoaded', function() {
     loadBalance();
     loadMerchantInfo();
+    loadPromotion();
     document.getElementById('withdrawAmount').addEventListener('input', calculateFee);
   });
+
+  function loadPromotion() {
+    fetch('/api/merchant/fee-promotion/current-best/' + merchantNo)
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 0 && res.data) {
+          currentPromotion = res.data;
+          showPromotionBanner(res.data);
+          startCountdown(res.data.remainingSeconds);
+        }
+      });
+  }
+
+  function showPromotionBanner(promotion) {
+    var banner = document.getElementById('promotionBanner');
+    document.getElementById('promoTitle').textContent = promotion.promotionName;
+    document.getElementById('promoDesc').textContent = promotion.promotionDesc;
+    document.getElementById('promoTag').textContent = promotion.promotionTypeName;
+    banner.style.display = 'block';
+  }
+
+  function startCountdown(remainingSeconds) {
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+    }
+    var seconds = remainingSeconds;
+    updateCountdown(seconds);
+    countdownTimer = setInterval(function() {
+      seconds--;
+      if (seconds <= 0) {
+        clearInterval(countdownTimer);
+        document.getElementById('countdownBadge').textContent = '活动已结束';
+        document.getElementById('promotionBanner').style.display = 'none';
+        currentPromotion = null;
+        calculateFee();
+        return;
+      }
+      updateCountdown(seconds);
+    }, 1000);
+  }
+
+  function updateCountdown(seconds) {
+    var days = Math.floor(seconds / 86400);
+    var hours = Math.floor((seconds % 86400) / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    var secs = seconds % 60;
+    var text = '';
+    if (days > 0) {
+      text += days + '天';
+    }
+    if (hours > 0 || days > 0) {
+      text += hours + '小时';
+    }
+    if (minutes > 0 || hours > 0 || days > 0) {
+      text += minutes + '分';
+    }
+    text += secs + '秒';
+    document.getElementById('countdownBadge').textContent = text;
+  }
 
   function loadBalance() {
     fetch(apiBase + '/balance/' + merchantNo)
@@ -419,17 +555,37 @@
       return;
     }
 
-    var fee = 0;
-    if (selectedType === 2) {
-      fee = amount * instantFeeRate;
-      fee = Math.round(fee * 100) / 100;
-    }
-    var actual = amount - fee;
+    var promoDiscountLabel = document.getElementById('promoDiscountLabel');
+    var originalFeeRow = document.getElementById('originalFeeRow');
+    var promoSavingRow = document.getElementById('promoSavingRow');
+    promoDiscountLabel.style.display = 'none';
+    originalFeeRow.style.display = 'none';
+    promoSavingRow.style.display = 'none';
 
-    document.getElementById('displayAmount').textContent = '¥' + formatAmount(amount);
-    document.getElementById('displayFee').textContent = '¥' + formatAmount(fee);
-    document.getElementById('displayActual').textContent = '¥' + formatAmount(actual);
-    document.getElementById('feeInfo').style.display = 'block';
+    var url = apiBase + '/calculate-fee-with-promotion/' + merchantNo
+      + '?amount=' + amount + '&withdrawType=' + selectedType;
+
+    fetch(url)
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 0 && res.data) {
+          var result = res.data;
+          document.getElementById('displayAmount').textContent = '¥' + formatAmount(result.amount);
+          document.getElementById('displayFee').textContent = '¥' + formatAmount(result.actualFee);
+          document.getElementById('displayActual').textContent = '¥' + formatAmount(result.actualAmount);
+
+          if (result.promotionApplied) {
+            promoDiscountLabel.style.display = 'inline';
+            originalFeeRow.style.display = 'flex';
+            document.getElementById('displayOriginalFee').textContent = '¥' + formatAmount(result.originalFee);
+            if (result.promoSaving && parseFloat(result.promoSaving) > 0) {
+              promoSavingRow.style.display = 'flex';
+              document.getElementById('displayPromoSaving').textContent = '¥' + formatAmount(result.promoSaving);
+            }
+          }
+          document.getElementById('feeInfo').style.display = 'block';
+        }
+      });
   }
 
   function formatAmount(amount) {

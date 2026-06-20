@@ -157,6 +157,22 @@ public class MerchantWithdrawController {
         return Result.success(fee);
     }
 
+    @GetMapping("/calculate-fee-with-promotion/{merchantNo}")
+    public Result<com.payhub.merchant.dto.FeePromotionCalcResult> calculateFeeWithPromotion(
+            @PathVariable String merchantNo,
+            @RequestParam BigDecimal amount,
+            @RequestParam Integer withdrawType) {
+        if (!CurrentUserContext.isAdmin()) {
+            String currentMerchantNo = CurrentUserContext.getCurrentMerchantNo();
+            if (!currentMerchantNo.equals(merchantNo)) {
+                throw new BusinessException(ResultCode.PERMISSION_DENIED, "无权限查看其他商户的手续费");
+            }
+        }
+        com.payhub.merchant.dto.FeePromotionCalcResult result =
+                merchantWithdrawService.calculateFeeWithPromotion(merchantNo, amount, withdrawType);
+        return Result.success(result);
+    }
+
     @PostMapping("/execute/{id}")
     public Result<Void> executeTransfer(@PathVariable Long id) {
         if (!CurrentUserContext.isAdmin()) {

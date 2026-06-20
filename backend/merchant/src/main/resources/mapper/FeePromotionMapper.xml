@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.merchant.mapper.FeePromotionMapper">
+
+    <resultMap id="FeePromotionMap" type="com.payhub.merchant.entity.FeePromotion">
+        <id column="id" property="id"/>
+        <result column="promotion_no" property="promotionNo"/>
+        <result column="promotion_name" property="promotionName"/>
+        <result column="promotion_desc" property="promotionDesc"/>
+        <result column="promotion_type" property="promotionType"/>
+        <result column="target_type" property="targetType"/>
+        <result column="target_value" property="targetValue"/>
+        <result column="fee_type" property="feeType"/>
+        <result column="discount_fee_rate" property="discountFeeRate"/>
+        <result column="fixed_fee_amount" property="fixedFeeAmount"/>
+        <result column="max_discount_amount" property="maxDiscountAmount"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="duration_days" property="durationDays"/>
+        <result column="total_quota" property="totalQuota"/>
+        <result column="used_quota" property="usedQuota"/>
+        <result column="per_merchant_quota" property="perMerchantQuota"/>
+        <result column="status" property="status"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="FeePromotionMap">
+        SELECT
+            id, promotion_no, promotion_name, promotion_desc, promotion_type,
+            target_type, target_value, fee_type, discount_fee_rate, fixed_fee_amount,
+            max_discount_amount, start_time, end_time, duration_days,
+            total_quota, used_quota, per_merchant_quota, status,
+            operator_id, operator_name, remark, created_at, updated_at, deleted
+        FROM fee_promotion
+        <where>
+            deleted = 0
+            <if test="params.promotionName != null and params.promotionName != ''">
+                AND promotion_name LIKE CONCAT('%', #{params.promotionName}, '%')
+            </if>
+            <if test="params.promotionType != null">
+                AND promotion_type = #{params.promotionType}
+            </if>
+            <if test="params.status != null">
+                AND status = #{params.status}
+            </if>
+            <if test="params.startDate != null and params.startDate != ''">
+                AND created_at <![CDATA[ >= ]]> #{params.startDate}
+            </if>
+            <if test="params.endDate != null and params.endDate != ''">
+                AND created_at <![CDATA[ <= ]]> #{params.endDate}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectAvailablePromotions" resultMap="FeePromotionMap">
+        SELECT DISTINCT p.*
+        FROM fee_promotion p
+        LEFT JOIN fee_promotion_merchant pm ON p.promotion_no = pm.promotion_no AND pm.merchant_no = #{merchantNo} AND pm.deleted = 0
+        WHERE p.deleted = 0
+          AND p.status = 2
+          <![CDATA[ AND p.start_time <= #{currentTime} ]]>
+          <![CDATA[ AND p.end_time >= #{currentTime} ]]>
+          AND (
+              p.target_type = 1
+              OR (p.target_type = 2 AND p.target_value = #{industryCode})
+              OR (p.target_type = 3 AND pm.id IS NOT NULL AND pm.status = 1)
+              OR (p.target_type = 4 AND pm.id IS NOT NULL AND pm.status = 1)
+          )
+          AND (p.total_quota IS NULL OR p.used_quota < p.total_quota)
+          AND (pm.per_merchant_quota IS NULL OR pm.used_quota < pm.per_merchant_quota)
+        ORDER BY p.promotion_type ASC, p.created_at DESC
+    </select>
+
+    <select id="selectByPromotionNo" resultMap="FeePromotionMap">
+        SELECT
+            id, promotion_no, promotion_name, promotion_desc, promotion_type,
+            target_type, target_value, fee_type, discount_fee_rate, fixed_fee_amount,
+            max_discount_amount, start_time, end_time, duration_days,
+            total_quota, used_quota, per_merchant_quota, status,
+            operator_id, operator_name, remark, created_at, updated_at, deleted
+        FROM fee_promotion
+        WHERE deleted = 0 AND promotion_no = #{promotionNo}
+        LIMIT 1
+    </select>
+
+</mapper>

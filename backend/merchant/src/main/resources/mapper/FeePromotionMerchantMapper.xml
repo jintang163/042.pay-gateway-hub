@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.merchant.mapper.FeePromotionMerchantMapper">
+
+    <resultMap id="FeePromotionMerchantMap" type="com.payhub.merchant.entity.FeePromotionMerchant">
+        <id column="id" property="id"/>
+        <result column="promotion_no" property="promotionNo"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="total_quota" property="totalQuota"/>
+        <result column="used_quota" property="usedQuota"/>
+        <result column="total_discount_amount" property="totalDiscountAmount"/>
+        <result column="status" property="status"/>
+        <result column="bind_source" property="bindSource"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByMerchantNo" resultMap="FeePromotionMerchantMap">
+        SELECT
+            pm.id, pm.promotion_no, pm.merchant_no, pm.merchant_name,
+            pm.start_time, pm.end_time, pm.total_quota, pm.used_quota,
+            pm.total_discount_amount, pm.status, pm.bind_source, pm.remark,
+            pm.created_at, pm.updated_at, pm.deleted
+        FROM fee_promotion_merchant pm
+        INNER JOIN fee_promotion p ON pm.promotion_no = p.promotion_no AND p.deleted = 0
+        WHERE pm.deleted = 0
+          AND pm.merchant_no = #{merchantNo}
+          AND pm.status = 1
+          <![CDATA[ AND pm.start_time <= #{currentTime} ]]>
+          <![CDATA[ AND pm.end_time >= #{currentTime} ]]>
+        ORDER BY pm.created_at DESC
+    </select>
+
+    <select id="selectByPromotionAndMerchant" resultMap="FeePromotionMerchantMap">
+        SELECT
+            id, promotion_no, merchant_no, merchant_name,
+            start_time, end_time, total_quota, used_quota,
+            total_discount_amount, status, bind_source, remark,
+            created_at, updated_at, deleted
+        FROM fee_promotion_merchant
+        WHERE deleted = 0
+          AND promotion_no = #{promotionNo}
+          AND merchant_no = #{merchantNo}
+        LIMIT 1
+    </select>
+
+    <update id="incrementUsedQuota">
+        UPDATE fee_promotion_merchant
+        SET used_quota = used_quota + 1,
+            total_discount_amount = COALESCE(total_discount_amount, 0) + #{discountAmount},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -98,3 +98,110 @@ FROM merchant_info m
 LEFT JOIN merchant_withdraw w ON m.merchant_no = w.merchant_no AND w.deleted = 0
 WHERE m.deleted = 0
 GROUP BY m.merchant_no, m.merchant_name;
+
+-- =====================================================
+-- 费率优惠活动模块
+-- =====================================================
+
+-- 费率优惠活动表
+CREATE TABLE IF NOT EXISTS fee_promotion (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    promotion_no VARCHAR(32) NOT NULL UNIQUE COMMENT '活动编号',
+    promotion_name VARCHAR(128) NOT NULL COMMENT '活动名称',
+    promotion_desc VARCHAR(512) COMMENT '活动描述',
+    promotion_type TINYINT NOT NULL DEFAULT 1 COMMENT '活动类型 1-新商户优惠 2-节日特惠 3-周年庆 4-VIP专属 5-自定义活动',
+    target_type TINYINT NOT NULL DEFAULT 1 COMMENT '目标范围 1-全体商户 2-指定行业 3-指定商户 4-新注册商户',
+    target_industry_codes VARCHAR(512) COMMENT '目标行业编码列表，逗号分隔',
+    target_merchant_nos TEXT COMMENT '目标商户号列表，逗号分隔',
+    fee_type TINYINT NOT NULL DEFAULT 1 COMMENT '优惠类型 1-费率折扣 2-固定手续费 3-0手续费',
+    discount_fee_rate DECIMAL(10,4) COMMENT '折扣费率（fee_type=1时有效，如0.5表示5折）',
+    fixed_fee_amount DECIMAL(18,2) COMMENT '固定手续费（fee_type=2时有效，单位元）',
+    start_time DATETIME NOT NULL COMMENT '活动开始时间',
+    end_time DATETIME NOT NULL COMMENT '活动结束时间',
+    total_quota DECIMAL(18,2) DEFAULT 0 COMMENT '总优惠额度（元），0表示不限制',
+    used_quota DECIMAL(18,2) DEFAULT 0 COMMENT '已使用优惠额度',
+    single_quota DECIMAL(18,2) DEFAULT 0 COMMENT '单笔最高优惠金额（元），0表示不限制',
+    daily_quota DECIMAL(18,2) DEFAULT 0 COMMENT '每日优惠额度（元），0表示不限制',
+    merchant_daily_quota DECIMAL(18,2) DEFAULT 0 COMMENT '单个商户每日优惠额度（元），0表示不限制',
+    merchant_total_quota DECIMAL(18,2) DEFAULT 0 COMMENT '单个商户总优惠额度（元），0表示不限制',
+    new_merchant_valid_days INT DEFAULT 0 COMMENT '新商户有效天数（target_type=4时有效，注册后多少天内有效）',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '活动状态 0-草稿 1-未开始 2-进行中 3-已结束 4-已停用',
+    created_by VARCHAR(64) COMMENT '创建人',
+    updated_by VARCHAR(64) COMMENT '更新人',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_promotion_no (promotion_no),
+    INDEX idx_promotion_type (promotion_type),
+    INDEX idx_status (status),
+    INDEX idx_start_end_time (start_time, end_time),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='费率优惠活动表';
+
+-- 活动商户关联表
+CREATE TABLE IF NOT EXISTS fee_promotion_merchant (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    promotion_id BIGINT NOT NULL COMMENT '活动ID',
+    promotion_no VARCHAR(32) NOT NULL COMMENT '活动编号',
+    merchant_no VARCHAR(32) NOT NULL COMMENT '商户号',
+    merchant_name VARCHAR(128) COMMENT '商户名称',
+    bind_time DATETIME COMMENT '绑定时间',
+    total_used_quota DECIMAL(18,2) DEFAULT 0 COMMENT '累计已使用优惠额度',
+    daily_used_quota DECIMAL(18,2) DEFAULT 0 COMMENT '当日已使用优惠额度',
+    last_use_date DATE COMMENT '最后使用日期',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted INT DEFAULT 0,
+    INDEX idx_promotion_id (promotion_id),
+    INDEX idx_promotion_no (promotion_no),
+    INDEX idx_merchant_no (merchant_no),
+    INDEX idx_promotion_merchant (promotion_no, merchant_no),
+    UNIQUE KEY uk_promotion_merchant (promotion_no, merchant_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='活动商户关联表';
+
+-- =====================================================
+-- 插入测试数据 - 费率优惠活动
+-- =====================================================
+
+-- 新商户首月0费率活动
+INSERT INTO fee_promotion (
+    promotion_no, promotion_name, promotion_desc,
+    promotion_type, target_type, fee_type,
+    discount_fee_rate, fixed_fee_amount,
+    start_time, end_time,
+    total_quota, single_quota, merchant_total_quota,
+    new_merchant_valid_days,
+    status, created_by
+) VALUES (
+    'FP2025001', '新商户首月0费率', '新注册商户首月享受0手续费优惠',
+    1, 4, 3,
+    NULL, NULL,
+    NOW(), DATE_ADD(NOW(), INTERVAL 90 DAY),
+    100000.00, 100.00, 500.00,
+    30,
+    2, 'SYSTEM'
+);
+
+-- 节日特惠活动 - 费率5折
+INSERT INTO fee_promotion (
+    promotion_no, promotion_name, promotion_desc,
+    promotion_type, target_type, fee_type,
+    discount_fee_rate, fixed_fee_amount,
+    start_time, end_time,
+    total_quota, single_quota,
+    status, created_by
+) VALUES (
+    'FP2025002', '夏日狂欢季 费率5折', '全场提现手续费5折优惠',
+    2, 1, 1,
+    0.5, NULL,
+    NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY),
+    500000.00, 50.00,
+    2, 'SYSTEM'
+);
+
+-- 为测试商户绑定新商户优惠
+INSERT INTO fee_promotion_merchant (
+    promotion_id, promotion_no, merchant_no, merchant_name, bind_time
+) VALUES
+(1, 'FP2025001', 'M000001', '沙箱测试商户1', NOW()),
+(1, 'FP2025001', 'M000002', '沙箱测试商户2', NOW());

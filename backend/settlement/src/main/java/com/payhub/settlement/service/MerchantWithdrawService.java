@@ -41,4 +41,6 @@ public interface MerchantWithdrawService extends IService<MerchantWithdraw> {
     void updateNextRetryTime(Long id);
 
     BigDecimal calculateFee(BigDecimal amount, Integer withdrawType);
+
+    com.payhub.merchant.dto.FeePromotionCalcResult calculateFeeWithPromotion(String merchantNo, BigDecimal amount, Integer withdrawType);
 }

@@ -42,6 +42,9 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
     @Autowired
     private MerchantAutoAuditService merchantAutoAuditService;
 
+    @Autowired(required = false)
+    private com.payhub.merchant.service.FeePromotionService feePromotionService;
+
     private static final String SMS_CODE_CACHE_KEY = "payhub:sms:reset_api_key:";
 
     @Override
@@ -126,6 +129,18 @@ public class MerchantInfoServiceImpl extends ServiceImpl<MerchantInfoMapper, Mer
         }
 
         this.updateById(merchant);
+
+        if (request.getAuditStatus() == 1 && feePromotionService != null) {
+            try {
+                feePromotionService.bindNewMerchantPromotion(
+                        request.getMerchantNo(),
+                        merchant.getMerchantName(),
+                        merchant.getIndustryCode());
+                log.info("商户审核通过，自动绑定新商户费率优惠活动: merchantNo={}", request.getMerchantNo());
+            } catch (Exception e) {
+                log.warn("绑定新商户费率优惠活动失败: merchantNo={}", request.getMerchantNo(), e);
+            }
+        }
 
         log.info("商户人工审核完成: merchantNo={}, auditStatus={}, auditUser={}",
                 request.getMerchantNo(), request.getAuditStatus(), request.getAuditUserName());
