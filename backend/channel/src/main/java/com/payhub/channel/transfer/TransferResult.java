@@ -3,6 +3,7 @@ package com.payhub.channel.transfer;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -20,7 +21,15 @@ public class TransferResult implements Serializable {
 
     private String failReason;
 
+    private String failCode;
+
+    private BigDecimal feeAmount;
+
     private LocalDateTime completeTime;
+
+    private String responseData;
+
+    private String requestData;
 
     public static final String STATUS_SUCCESS = "SUCCESS";
     public static final String STATUS_FAIL = "FAIL";
@@ -43,6 +52,12 @@ public class TransferResult implements Serializable {
         result.setStatus(STATUS_FAIL);
         result.setFailReason(failReason);
         result.setCompleteTime(LocalDateTime.now());
+        return result;
+    }
+
+    public static TransferResult fail(String transferNo, String failCode, String failReason) {
+        TransferResult result = fail(transferNo, failReason);
+        result.setFailCode(failCode);
         return result;
     }
 

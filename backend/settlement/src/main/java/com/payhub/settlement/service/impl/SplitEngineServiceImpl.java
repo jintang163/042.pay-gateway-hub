@@ -18,6 +18,7 @@ import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +37,12 @@ public class SplitEngineServiceImpl extends ServiceImpl<PaySplitDetailMapper, Pa
 
     @Autowired(required = false)
     private SplitReceiverService splitReceiverService;
+
+    @Autowired(required = false)
+    private SplitTransferService splitTransferService;
+
+    @Value("${payhub.split.realtime-transfer:false}")
+    private boolean realtimeTransferEnabled;
 
     @Override
     public List<PaySplitDetail> calculateSplit(PayOrder order, PaySplitRule rule) {
@@ -156,6 +163,16 @@ public class SplitEngineServiceImpl extends ServiceImpl<PaySplitDetailMapper, Pa
         this.saveBatch(details);
 
         log.info("分账执行完成, orderNo={}, 生成明细数量: {}", order.getOrderNo(), details.size());
+
+        if (realtimeTransferEnabled && splitTransferService != null) {
+            try {
+                log.info("触发实时银行卡代付, orderNo={}, detailCount={}", order.getOrderNo(), details.size());
+                splitTransferService.executeTransferBatch(details);
+            } catch (Exception e) {
+                log.error("实时代付执行失败, orderNo={}", order.getOrderNo(), e);
+            }
+        }
+
         return details;
     }
 

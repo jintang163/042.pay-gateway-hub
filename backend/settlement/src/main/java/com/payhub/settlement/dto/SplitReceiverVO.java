@@ -50,6 +50,24 @@ public class SplitReceiverVO implements Serializable {
 
     private String verifyRequestId;
 
+    private Integer idCardVerifyChannel;
+
+    private String idCardVerifyChannelDesc;
+
+    private Integer idCardVerifyStatus;
+
+    private String idCardVerifyStatusDesc;
+
+    private LocalDateTime idCardVerifyTime;
+
+    private String idCardVerifyRequestId;
+
+    private String idCardVerifyLevel;
+
+    private String idCardVerifyFailCode;
+
+    private String idCardVerifyFailReason;
+
     private String contactName;
 
     private String contactPhone;

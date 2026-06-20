@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.payhub.common.context.CurrentUserContext;
 import com.payhub.common.result.Result;
 import com.payhub.settlement.dto.SplitReceiverBatchImportItem;
+import com.payhub.settlement.dto.SplitReceiverIdCardVerifyRequest;
 import com.payhub.settlement.dto.SplitReceiverSaveRequest;
 import com.payhub.settlement.dto.SplitReceiverVO;
 import com.payhub.settlement.dto.SplitReceiverVerifyLogVO;
@@ -85,6 +86,15 @@ public class SplitReceiverController {
         String operatorId = getCurrentOperatorId();
         String operatorName = getCurrentOperatorName();
         splitReceiverService.verifyReceiver(request, merchantNo, operatorId, operatorName);
+        return Result.success();
+    }
+
+    @PostMapping("/verify-idcard")
+    public Result<Void> verifyIdCard(@Valid @RequestBody SplitReceiverIdCardVerifyRequest request) {
+        String merchantNo = CurrentUserContext.getCurrentMerchantNo();
+        String operatorId = getCurrentOperatorId();
+        String operatorName = getCurrentOperatorName();
+        splitReceiverService.verifyIdCard(request, merchantNo, operatorId, operatorName);
         return Result.success();
     }
 

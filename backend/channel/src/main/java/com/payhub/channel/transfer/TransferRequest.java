@@ -24,9 +24,29 @@ public class TransferRequest implements Serializable {
 
     private String bankCode;
 
+    private String bankBranchName;
+
+    private String bankBranchCode;
+
+    private Integer receiverType;
+
+    private String idCardType;
+
+    private String idCardNo;
+
+    private String idCardName;
+
+    private String bankPhone;
+
+    private String purpose;
+
     private String remark;
 
     private String sourceType;
 
     private String sourceNo;
+
+    private String merchantNo;
+
+    private String notifyUrl;
 }

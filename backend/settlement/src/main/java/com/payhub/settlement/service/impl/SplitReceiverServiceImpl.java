@@ -13,6 +13,7 @@ import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.settlement.dto.SplitReceiverBatchImportItem;
+import com.payhub.settlement.dto.SplitReceiverIdCardVerifyRequest;
 import com.payhub.settlement.dto.SplitReceiverSaveRequest;
 import com.payhub.settlement.dto.SplitReceiverVO;
 import com.payhub.settlement.dto.SplitReceiverVerifyLogVO;
@@ -27,6 +28,8 @@ import com.payhub.settlement.mapper.SplitReceiverVerifyLogMapper;
 import com.payhub.settlement.service.SplitReceiverService;
 import com.payhub.settlement.verify.BankCardVerifyResult;
 import com.payhub.settlement.verify.BankCardVerifyService;
+import com.payhub.settlement.verify.IdCardVerifyResult;
+import com.payhub.settlement.verify.IdCardVerifyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -53,6 +56,10 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
     @Autowired
     @Qualifier("bankCardVerifyService")
     private BankCardVerifyService bankCardVerifyService;
+
+    @Autowired(required = false)
+    @Qualifier("idCardVerifyService")
+    private IdCardVerifyService idCardVerifyService;
 
     @Override
     public IPage<SplitReceiverVO> listPage(Long current, Long size, String merchantNo, Map<String, Object> params) {
@@ -234,6 +241,103 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
         verifyLogMapper.insert(verifyLog);
 
         log.info("分账接收方实名认证完成: receiverNo={}, verifyStatus={}, verifyRequestId={}", receiver.getReceiverNo(), verifyStatus, verifyRequestId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void verifyIdCard(SplitReceiverIdCardVerifyRequest request, String merchantNo, String operatorId, String operatorName) {
+        LambdaQueryWrapper<SplitReceiver> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SplitReceiver::getReceiverNo, request.getReceiverNo())
+                .eq(SplitReceiver::getMerchantNo, merchantNo);
+        SplitReceiver receiver = this.getOne(wrapper);
+        if (receiver == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "分账接收方不存在");
+        }
+        doVerifyIdCardInternal(receiver, request.getVerifyChannel(), request.getFaceImageBase64(), operatorId, operatorName);
+    }
+
+    private void doVerifyIdCardInternal(SplitReceiver receiver, Integer verifyChannel, String faceImageBase64,
+                                        String operatorId, String operatorName) {
+        if (idCardVerifyService == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "身份证核验服务未启用");
+        }
+        if (SplitReceiverVerifyStatusEnum.VERIFYING.getCode().equals(receiver.getIdCardVerifyStatus())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "身份证正在认证中，请稍后再试");
+        }
+        if (SplitReceiverVerifyStatusEnum.VERIFIED.getCode().equals(receiver.getIdCardVerifyStatus())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "身份证已认证，无需重复认证");
+        }
+
+        String verifyRequestId = OrderNoGenerator.generateWithPrefix("IV");
+        LocalDateTime verifyTime = LocalDateTime.now();
+
+        VerifyChannelEnum channelEnum = VerifyChannelEnum.getByCode(verifyChannel);
+        if (channelEnum == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "不支持的认证渠道");
+        }
+
+        IdCardVerifyResult verifyResult;
+        switch (channelEnum) {
+            case ID_CARD_SECOND_GEN:
+                verifyResult = idCardVerifyService.verifySecondGen(
+                        receiver.getIdCardName(), receiver.getIdCardNo(), verifyRequestId);
+                break;
+            case ID_CARD_THIRD_GEN:
+                verifyResult = idCardVerifyService.verifyThirdGen(
+                        receiver.getIdCardName(), receiver.getIdCardNo(), verifyRequestId);
+                break;
+            case ID_CARD_LIVENESS:
+                if (StrUtil.isBlank(faceImageBase64)) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "活体检测需要人脸图片");
+                }
+                verifyResult = idCardVerifyService.verifyWithLiveness(
+                        receiver.getIdCardName(), receiver.getIdCardNo(), faceImageBase64, verifyRequestId);
+                break;
+            default:
+                throw new BusinessException(ResultCode.PARAM_ERROR, "不支持的身份证认证渠道");
+        }
+
+        Integer verifyStatus;
+        if (Boolean.TRUE.equals(verifyResult.getSuccess())) {
+            verifyStatus = SplitReceiverVerifyStatusEnum.VERIFIED.getCode();
+        } else {
+            verifyStatus = SplitReceiverVerifyStatusEnum.FAILED.getCode();
+        }
+
+        receiver.setIdCardVerifyStatus(verifyStatus);
+        receiver.setIdCardVerifyChannel(verifyChannel);
+        receiver.setIdCardVerifyTime(verifyTime);
+        receiver.setIdCardVerifyRequestId(verifyRequestId);
+        receiver.setIdCardVerifyLevel(verifyResult.getVerifyLevel());
+        receiver.setIdCardVerifyFailCode(verifyResult.getFailCode());
+        receiver.setIdCardVerifyFailReason(verifyResult.getFailReason());
+        receiver.setOperatorId(operatorId);
+        receiver.setOperatorName(operatorName);
+        this.updateById(receiver);
+
+        SplitReceiverVerifyLog verifyLog = new SplitReceiverVerifyLog();
+        verifyLog.setLogNo(OrderNoGenerator.generateWithPrefix("VL"));
+        verifyLog.setMerchantNo(receiver.getMerchantNo());
+        verifyLog.setReceiverNo(receiver.getReceiverNo());
+        verifyLog.setVerifyChannel(verifyChannel);
+        verifyLog.setVerifyRequestId(verifyRequestId);
+        verifyLog.setIdCardName(receiver.getIdCardName());
+        verifyLog.setIdCardNo(receiver.getIdCardNo());
+        verifyLog.setBankCardNo(receiver.getBankCardNo());
+        verifyLog.setBankPhone(receiver.getBankPhone());
+        verifyLog.setVerifyStatus(verifyStatus);
+        verifyLog.setVerifyResult(Boolean.TRUE.equals(verifyResult.getSuccess()) ? "认证成功" : "认证失败");
+        verifyLog.setVerifyFailCode(verifyResult.getFailCode());
+        verifyLog.setVerifyFailReason(verifyResult.getFailReason());
+        verifyLog.setVerifyTime(verifyTime);
+        verifyLog.setRequestData(verifyResult.getRequestData());
+        verifyLog.setResponseData(verifyResult.getResponseData());
+        verifyLog.setOperatorId(operatorId);
+        verifyLog.setOperatorName(operatorName);
+        verifyLogMapper.insert(verifyLog);
+
+        log.info("分账接收方身份证认证完成: receiverNo={}, verifyChannel={}, verifyStatus={}",
+                receiver.getReceiverNo(), verifyChannel, verifyStatus);
     }
 
     @Override
@@ -578,6 +682,14 @@ public class SplitReceiverServiceImpl extends ServiceImpl<SplitReceiverMapper, S
         VerifyChannelEnum channelEnum = VerifyChannelEnum.getByCode(receiver.getVerifyChannel());
         if (channelEnum != null) {
             vo.setVerifyChannelDesc(channelEnum.getDesc());
+        }
+        SplitReceiverVerifyStatusEnum idCardVerifyStatusEnum = SplitReceiverVerifyStatusEnum.getByCode(receiver.getIdCardVerifyStatus());
+        if (idCardVerifyStatusEnum != null) {
+            vo.setIdCardVerifyStatusDesc(idCardVerifyStatusEnum.getDesc());
+        }
+        VerifyChannelEnum idCardVerifyChannelEnum = VerifyChannelEnum.getByCode(receiver.getIdCardVerifyChannel());
+        if (idCardVerifyChannelEnum != null) {
+            vo.setIdCardVerifyChannelDesc(idCardVerifyChannelEnum.getDesc());
         }
         vo.setStatusDesc(receiver.getStatus() != null && receiver.getStatus() == 1 ? "启用" : "禁用");
         return vo;

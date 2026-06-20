@@ -47,6 +47,20 @@ public class SplitReceiver implements Serializable {
 
     private String verifyRequestId;
 
+    private Integer idCardVerifyChannel;
+
+    private Integer idCardVerifyStatus;
+
+    private LocalDateTime idCardVerifyTime;
+
+    private String idCardVerifyRequestId;
+
+    private String idCardVerifyLevel;
+
+    private String idCardVerifyFailCode;
+
+    private String idCardVerifyFailReason;
+
     private String contactName;
 
     private String contactPhone;

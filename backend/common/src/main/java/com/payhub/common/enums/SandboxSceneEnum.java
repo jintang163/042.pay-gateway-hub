@@ -14,7 +14,11 @@ public enum SandboxSceneEnum {
     AMOUNT_MISMATCH("amount_mismatch", "金额不匹配", "模拟回调金额与订单金额不一致"),
     REFUND_SUCCESS("refund_success", "退款成功", "模拟正常退款成功流程"),
     REFUND_FAILED("refund_failed", "退款失败", "模拟退款失败场景"),
-    CHANNEL_ERROR("channel_error", "通道异常", "模拟支付通道返回系统异常");
+    CHANNEL_ERROR("channel_error", "通道异常", "模拟支付通道返回系统异常"),
+    VERIFY_FAIL("verify_fail", "认证失败", "模拟实名校验失败场景"),
+    VERIFY_EXCEPTION("verify_exception", "认证异常", "模拟实名校验请求异常场景"),
+    TRANSFER_FAIL("transfer_fail", "代付失败", "模拟分账代付失败场景"),
+    TRANSFER_EXCEPTION("transfer_exception", "代付异常", "模拟分账代付请求异常场景");
 
     private final String code;
     private final String name;

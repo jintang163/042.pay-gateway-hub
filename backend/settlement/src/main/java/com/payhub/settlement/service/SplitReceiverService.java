@@ -3,6 +3,7 @@ package com.payhub.settlement.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.payhub.settlement.dto.SplitReceiverBatchImportItem;
+import com.payhub.settlement.dto.SplitReceiverIdCardVerifyRequest;
 import com.payhub.settlement.dto.SplitReceiverSaveRequest;
 import com.payhub.settlement.dto.SplitReceiverVO;
 import com.payhub.settlement.dto.SplitReceiverVerifyLogVO;
@@ -10,6 +11,7 @@ import com.payhub.settlement.dto.SplitReceiverVerifyRequest;
 import com.payhub.settlement.entity.SplitReceiver;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +28,8 @@ public interface SplitReceiverService extends IService<SplitReceiver> {
     void deleteReceiver(Long id);
 
     void verifyReceiver(SplitReceiverVerifyRequest request, String merchantNo, String operatorId, String operatorName);
+
+    void verifyIdCard(@Valid SplitReceiverIdCardVerifyRequest request, String merchantNo, String operatorId, String operatorName);
 
     SplitReceiver checkReceiverVerified(String receiverNo, String merchantNo);
 
