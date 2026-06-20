@@ -13,10 +13,7 @@
       padding: 20px;
       color: #333;
     }
-    .container {
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    .container { max-width: 480px; margin: 0 auto; }
     .success-card {
       background: #fff;
       border-radius: 16px;
@@ -35,17 +32,13 @@
       background: linear-gradient(90deg, #52c41a, #73d13d, #95de64);
     }
     .success-icon {
-      width: 72px;
-      height: 72px;
+      width: 72px; height: 72px;
       border-radius: 50%;
       background: linear-gradient(135deg, #52c41a, #389e0d);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       margin: 0 auto 20px;
       color: #fff;
-      font-size: 40px;
-      font-weight: bold;
+      font-size: 40px; font-weight: bold;
       box-shadow: 0 8px 24px rgba(82, 196, 26, 0.35);
       animation: popIn .5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
@@ -53,17 +46,8 @@
       from { transform: scale(0); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
-    .success-title {
-      font-size: 22px;
-      font-weight: 600;
-      color: #1a1a1a;
-      margin-bottom: 8px;
-    }
-    .success-subtitle {
-      font-size: 14px;
-      color: #999;
-      margin-bottom: 20px;
-    }
+    .success-title { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+    .success-subtitle { font-size: 14px; color: #999; margin-bottom: 20px; }
     .success-amount {
       font-size: 36px;
       font-weight: 700;
@@ -116,10 +100,7 @@
       border-radius: 4px;
       font-weight: normal;
     }
-    .ad-more {
-      font-size: 12px;
-      color: #999;
-    }
+    .ad-more { font-size: 12px; color: #999; }
     .ad-list {
       display: flex;
       flex-direction: column;
@@ -138,33 +119,42 @@
       overflow: hidden;
     }
     .ad-item:active { transform: scale(0.98); background: #f0f0f0; }
-    .ad-item.has-image { padding: 0; }
+    .ad-item.has-image { display: block; padding: 0; }
     .ad-item .ad-image-wrapper {
       width: 100%;
       height: 140px;
       overflow: hidden;
     }
     .ad-item .ad-image-wrapper img {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       object-fit: cover;
       display: block;
     }
-    .ad-icon {
-      width: 56px;
-      height: 56px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #e6f7ff, #bae7ff);
+    .ad-item .ad-image-caption {
+      padding: 8px 12px 12px;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+      border-top: 1px solid #f0f0f0;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+    }
+    .ad-item .ad-image-caption .ad-title-inner {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ad-icon {
+      width: 56px; height: 56px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #e6f7ff, #bae7ff);
+      display: flex; align-items: center; justify-content: center;
       font-size: 28px;
       flex-shrink: 0;
     }
-    .ad-content {
-      flex: 1;
-      min-width: 0;
-    }
+    .ad-content { flex: 1; min-width: 0; }
     .ad-item-title {
       font-size: 14px;
       font-weight: 600;
@@ -211,16 +201,8 @@
       color: #bfbfbf;
       font-size: 13px;
     }
-    .empty-state .empty-icon {
-      font-size: 48px;
-      margin-bottom: 10px;
-      opacity: 0.5;
-    }
-    .bottom-actions {
-      margin-top: 20px;
-      display: flex;
-      gap: 12px;
-    }
+    .empty-state .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.5; }
+    .bottom-actions { margin-top: 20px; display: flex; gap: 12px; }
     .btn {
       flex: 1;
       padding: 14px;
@@ -260,7 +242,7 @@
       <div class="success-amount">
         <span class="symbol">¥</span><span th:text="${payAmount}">0.00</span>
       </div>
-      <div class="order-info" th:if="${orderNo != null and !orderNo.isEmpty()">
+      <div class="order-info" th:if="${orderNo != null and !#strings.isEmpty(orderNo)}">
         <div class="row">
           <span class="label">订单号</span>
           <span class="value" th:text="${orderNo}">-</span>
@@ -273,39 +255,42 @@
         <span class="ad-title">
           为您推荐 <span class="ad-tag">广告</span>
         </span>
-        <span class="ad-more">精选好物</span>
+        <span class="ad-more" th:text="'共 ' + ${#lists.size(ads)} + ' 个推荐'">精选好物</span>
       </div>
 
-      <div class="ad-list" th:if="${ads != null and !ads.isEmpty()">
+      <div class="ad-list" th:if="${ads != null and !#lists.isEmpty(ads)}">
         <a class="ad-item" th:each="ad : ${ads}"
+           th:classappend="${ad.adImageUrl != null and !#strings.isEmpty(ad.adImageUrl)} ? 'has-image'"
            th:href="@{/ad/click/redirect(adCode=${ad.adCode}, merchantNo=${merchantNo}, orderNo=${orderNo}, position=${position}, payAmount=${payAmount})}"
-           target="_blank"
-           th:onclick="'recordAdClick(\'' + ${ad.adCode} + '\');'">
-          <div class="ad-icon" th:if="${ad.adImageUrl == null or ad.adImageUrl.isEmpty()}">
-            <span>📦</span>
-          </div>
-          <div class="ad-content" th:if="${ad.adImageUrl == null or ad.adImageUrl.isEmpty()}">
-            <div class="ad-item-title" th:text="${ad.adTitle}">广告标题</div>
-            <div class="ad-item-desc" th:text="${ad.adDescription}">广告描述文字</div>
-            <div class="ad-item-meta">
-              <span class="ad-cpc" th:if="${ad.cpcPrice != null and ad.cpcPrice.compareTo(T(java.math.BigDecimal).ZERO) > 0">
-                赞助
-              </span>
-              <span>点击查看详情</span>
-            </div>
-          </div>
-          <div class="ad-arrow" th:if="${ad.adImageUrl == null or ad.adImageUrl.isEmpty()}">›</div>
-        </a>
-        <div class="ad-item has-image" th:each="ad : ${ads}" th:if="${ad.adImageUrl != null and !ad.adImageUrl.isEmpty()}"
-           th:href="@{/ad/click/redirect(adCode=${ad.adCode}, merchantNo=${merchantNo}, orderNo=${orderNo}, position=${position}, payAmount=${payAmount})}"
+           th:attr="data-ad-code=${ad.adCode}"
            target="_blank">
-          <div class="ad-image-wrapper">
-            <img th:src="${ad.adImageUrl}" alt="ad"/>
-          </div>
-        </div>
+          <th:block th:if="${ad.adImageUrl != null and !#strings.isEmpty(ad.adImageUrl)}">
+            <div class="ad-image-wrapper">
+              <img th:src="${ad.adImageUrl}" alt="ad"/>
+            </div>
+            <div class="ad-image-caption">
+              <span class="ad-title-inner" th:text="${ad.adTitle}">广告标题</span>
+              <span class="ad-arrow">›</span>
+            </div>
+          </th:block>
+          <th:block th:if="${ad.adImageUrl == null or #strings.isEmpty(ad.adImageUrl)}">
+            <div class="ad-icon">
+              <span>📦</span>
+            </div>
+            <div class="ad-content">
+              <div class="ad-item-title" th:text="${ad.adTitle}">广告标题</div>
+              <div class="ad-item-desc" th:text="${ad.adDescription}">广告描述文字</div>
+              <div class="ad-item-meta">
+                <span class="ad-cpc" th:if="${ad.cpcPrice != null and ad.cpcPrice > 0}">赞助</span>
+                <span>点击查看详情</span>
+              </div>
+            </div>
+            <div class="ad-arrow">›</div>
+          </th:block>
+        </a>
       </div>
 
-      <div class="empty-state" th:if="${ads == null or ads.isEmpty()}">
+      <div class="empty-state" th:if="${ads == null or #lists.isEmpty(ads)}">
         <div class="empty-icon">🎯</div>
         <div>暂无推荐内容</div>
       </div>
@@ -321,13 +306,47 @@
     </div>
   </div>
 
-<script>
-  function recordAdClick(adCode) {
+<script th:inline="javascript">
+  var impressionReported = false;
+  var reportData = {
+    adCodes: /*[[${adCodesJson}]]*/ [],
+    merchantNo: /*[[${merchantNo}]]*/ '',
+    orderNo: /*[[${orderNo}]]*/ '',
+    position: /*[[${position}]]*/ 'PAY_SUCCESS',
+    payAmount: /*[[${payAmount}]]*/ '0.00'
+  };
+
+  function reportImpression() {
+    if (impressionReported) return;
+    impressionReported = true;
     try {
-      var img = new Image();
-      img.src = '/api/ad/click?adCode=' + encodeURIComponent(adCode);
-    } catch(e) {}
+      var data = JSON.stringify({
+        codes: reportData.adCodes,
+        merchantNo: reportData.merchantNo,
+        orderNo: reportData.orderNo,
+        position: reportData.position,
+        payAmount: reportData.payAmount
+      });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/ad/impression', new Blob([data], { type: 'application/json' }));
+      } else {
+        fetch('/api/ad/impression', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: data,
+          keepalive: true
+        });
+      }
+    } catch(e) { console.warn('曝光上报失败:', e); }
   }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') reportImpression();
+  });
+  if (document.visibilityState === 'visible') {
+    setTimeout(reportImpression, 300);
+  }
+
   function goBack() {
     if (window.history.length > 1) {
       window.history.back();

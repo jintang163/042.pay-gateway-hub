@@ -75,11 +75,24 @@ public class MerchantAdController {
             @RequestParam String merchantNo,
             @RequestParam(defaultValue = "PAY_SUCCESS") String position,
             @RequestParam(defaultValue = "5") Integer limit,
-            @RequestParam(required = false) String adCodes) {
+            @RequestParam(required = false) String orderNo,
+            @RequestParam(required = false) String payAmount,
+            @RequestParam(required = false) String adCodes,
+            HttpServletRequest httpRequest) {
         List<AdDisplayVO> ads = merchantAdService.listDisplayAds(merchantNo, position, limit);
         if (!ads.isEmpty()) {
             List<String> codes = ads.stream().map(AdDisplayVO::getAdCode).toList();
-            merchantAdService.recordImpression(codes);
+            AdImpressionReportRequest impReq = new AdImpressionReportRequest();
+            impReq.setCodes(codes);
+            impReq.setMerchantNo(merchantNo);
+            impReq.setOrderNo(orderNo);
+            impReq.setPosition(position);
+            impReq.setPayAmount(payAmount != null && !payAmount.isEmpty() ? new java.math.BigDecimal(payAmount) : java.math.BigDecimal.ZERO);
+            impReq.setClientIp(getClientIp(httpRequest));
+            String ua = httpRequest != null ? httpRequest.getHeader("User-Agent") : null;
+            impReq.setDeviceId(ua != null ? String.valueOf(ua.hashCode()) : null);
+            impReq.setRefererUrl(httpRequest != null ? httpRequest.getHeader("Referer") : null);
+            merchantAdService.recordImpression(impReq);
         }
         return Result.success(ads);
     }
@@ -87,8 +100,44 @@ public class MerchantAdController {
     @PostMapping("/click")
     public Result<AdClickReportResult> reportClick(@Valid @RequestBody AdClickReportRequest request,
                                                    HttpServletRequest httpRequest) {
+        String ua = httpRequest != null ? httpRequest.getHeader("User-Agent") : null;
+        if (ua != null && request.getDeviceId() == null) {
+            request.setDeviceId(String.valueOf(ua.hashCode()));
+        }
+        if (request.getRefererUrl() == null && httpRequest != null) {
+            request.setRefererUrl(httpRequest.getHeader("Referer"));
+        }
+        if (request.getClientIp() == null) {
+            request.setClientIp(getClientIp(httpRequest));
+        }
+        if (request.getPosition() == null) {
+            request.setPosition("PAY_SUCCESS");
+        }
         AdClickReportResult result = merchantAdService.reportClick(request, httpRequest);
         return Result.success(result);
+    }
+
+    @PostMapping("/impression")
+    public Result<Void> reportImpression(@RequestBody AdImpressionReportRequest request,
+                                         HttpServletRequest httpRequest) {
+        if (request == null) {
+            return Result.success();
+        }
+        String ua = httpRequest != null ? httpRequest.getHeader("User-Agent") : null;
+        if (ua != null && request.getDeviceId() == null) {
+            request.setDeviceId(String.valueOf(ua.hashCode()));
+        }
+        if (request.getRefererUrl() == null && httpRequest != null) {
+            request.setRefererUrl(httpRequest.getHeader("Referer"));
+        }
+        if (request.getClientIp() == null) {
+            request.setClientIp(getClientIp(httpRequest));
+        }
+        if (request.getPosition() == null) {
+            request.setPosition("PAY_SUCCESS");
+        }
+        merchantAdService.recordImpression(request);
+        return Result.success();
     }
 
     @GetMapping("/stats/overview")
@@ -114,5 +163,20 @@ public class MerchantAdController {
             if (attr != null) merchantNo = attr.toString();
         }
         return merchantNo;
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        if (request == null) return "127.0.0.1";
+        String[] headers = {"X-Forwarded-For", "Proxy-Client-IP", "WL-Proxy-Client-IP", "X-Real-IP"};
+        for (String h : headers) {
+            String ip = request.getHeader(h);
+            if (ip != null && ip.length() > 0 && !"unknown".equalsIgnoreCase(ip)) {
+                if (ip.contains(",")) {
+                    ip = ip.split(",")[0].trim();
+                }
+                return "0:0:0:0:0:0:0:1".equals(ip) ? "127.0.0.1" : ip;
+            }
+        }
+        return request.getRemoteAddr();
     }
 }

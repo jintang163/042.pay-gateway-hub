@@ -330,6 +330,59 @@
     }
     .result-detail .label { color: #999; }
     .result-detail .value { color: #333; word-break: break-all; max-width: 60%; }
+    .result-ad {
+      margin-top: 12px;
+      text-align: left;
+    }
+    .result-ad-label {
+      font-size: 11px;
+      color: #d46b08;
+      background: #fff7e6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+    .result-ad-link {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      background: linear-gradient(135deg, #fffbe6, #fff1b8);
+      border-radius: 10px;
+      text-decoration: none;
+      color: inherit;
+      align-items: center;
+    }
+    .result-ad-link:active { transform: scale(0.99); }
+    .result-ad-icon {
+      width: 40px; height: 40px;
+      background: #fff;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .result-ad-text { flex: 1; min-width: 0; }
+    .result-ad-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a1a;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .result-ad-desc {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .result-ad-arrow { color: #bfbfbf; font-size: 14px; }
+    .result-ad-empty {
+      font-size: 12px; color: #bfbfbf; padding: 8px 0; text-align: center;
+    }
 
     .qrcode-section { display: none; text-align: center; }
     .qrcode-section.active { display: block; }
@@ -505,7 +558,11 @@
       <div class="result-desc" id="resultDesc">感谢您的使用</div>
       <div class="result-amount" id="resultAmount">¥0.00</div>
       <div class="result-detail" id="resultDetail" style="display:none;"></div>
-      <button class="action-btn primary" onclick="closeModal()">确认</button>
+      <div class="result-ad" id="resultAd" style="display:none;">
+        <span class="result-ad-label">广告</span>
+        <div id="resultAdInner"></div>
+      </div>
+      <button class="action-btn primary" onclick="closeModal()" id="resultPrimaryBtn">确认</button>
       <button class="action-btn secondary" id="continueBtn" onclick="resetForm()">继续收款</button>
     </div>
   </div>
@@ -1068,6 +1125,61 @@
     } else {
       detailBox.style.display = 'none';
     }
+
+    var adBox = document.getElementById('resultAd');
+    var adInner = document.getElementById('resultAdInner');
+    var primaryBtn = document.getElementById('resultPrimaryBtn');
+    adBox.style.display = 'none';
+    adInner.innerHTML = '';
+
+    if (type === 'success' && merchantNo) {
+      primaryBtn.textContent = '查看推荐奖励';
+      primaryBtn.onclick = function() {
+        window.location.href = '/ad/success/' + encodeURIComponent(merchantNo)
+          + '?orderNo=' + encodeURIComponent(currentOrderNo || '')
+          + '&amount=' + encodeURIComponent(amount)
+          + '&position=PAY_SUCCESS';
+      };
+      fetch('/api/ad/display?merchantNo=' + encodeURIComponent(merchantNo)
+        + '&position=PAY_SUCCESS&limit=1'
+        + '&orderNo=' + encodeURIComponent(currentOrderNo || '')
+        + '&payAmount=' + encodeURIComponent(amount))
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.code === 200 && res.data && res.data.length > 0) {
+            var ad = res.data[0];
+            adBox.style.display = 'block';
+            var target = '/ad/click/redirect?adCode=' + encodeURIComponent(ad.adCode)
+              + '&merchantNo=' + encodeURIComponent(merchantNo)
+              + '&orderNo=' + encodeURIComponent(currentOrderNo || '')
+              + '&position=PAY_SUCCESS'
+              + '&payAmount=' + encodeURIComponent(amount);
+            if (ad.adImageUrl && ad.adImageUrl.length > 0) {
+              adInner.innerHTML =
+                '<a href="' + target + '" target="_blank" class="result-ad-link" style="display:block;padding:0;">'
+                + '<img src="' + ad.adImageUrl + '" alt="ad" style="width:100%;border-radius:8px;max-height:140px;object-fit:cover;display:block;"/></a>';
+            } else {
+              adInner.innerHTML =
+                '<a href="' + target + '" target="_blank" class="result-ad-link">'
+                + '<div class="result-ad-icon">🎁</div>'
+                + '<div class="result-ad-text">'
+                + '<div class="result-ad-title">' + (ad.adTitle || '精选推荐') + '</div>'
+                + '<div class="result-ad-desc">' + (ad.adDescription || '点击查看详情') + '</div>'
+                + '</div><div class="result-ad-arrow">›</div></a>';
+            }
+          } else {
+            if (res.code === 200 && (!res.data || res.data.length === 0)) {
+              adBox.style.display = 'block';
+              adInner.innerHTML = '<div class="result-ad-empty">暂无广告推荐</div>';
+            }
+          }
+        })
+        .catch(function() {});
+    } else {
+      primaryBtn.textContent = '确认';
+      primaryBtn.onclick = function() { closeModal(); };
+    }
+
     modal.classList.add('show');
   }
 

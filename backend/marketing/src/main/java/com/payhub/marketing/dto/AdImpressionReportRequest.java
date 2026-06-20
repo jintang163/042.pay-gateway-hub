@@ -2,17 +2,16 @@ package com.payhub.marketing.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
-public class AdClickReportRequest implements Serializable {
+public class AdImpressionReportRequest implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    @NotBlank(message = "广告编号不能为空")
-    private String adCode;
+    private List<String> codes;
 
     private String merchantNo;
 

@@ -218,6 +218,18 @@ public class MerchantAdServiceImpl implements MerchantAdService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void recordImpression(AdImpressionReportRequest request) {
+        if (request == null || request.getCodes() == null || request.getCodes().isEmpty()) {
+            return;
+        }
+        recordImpression(request.getCodes());
+        log.info("广告曝光上报, merchantNo={}, orderNo={}, position={}, payAmount={}, codes={}, deviceId={}, ip={}",
+                request.getMerchantNo(), request.getOrderNo(), request.getPosition(),
+                request.getPayAmount(), request.getCodes(), request.getDeviceId(), request.getClientIp());
+    }
+
     private void upsertDailyStatsImpression(LocalDate today, MerchantAd ad) {
         try {
             AdStatsDaily stats = new AdStatsDaily();

@@ -25,6 +25,8 @@ public interface MerchantAdService {
 
     void recordImpression(List<String> adCodes);
 
+    void recordImpression(AdImpressionReportRequest request);
+
     AdClickReportResult reportClick(AdClickReportRequest request, HttpServletRequest httpRequest);
 
     AdStatsOverviewVO getStatsOverview(String merchantNo, String startDate, String endDate, String adCode, String position);
