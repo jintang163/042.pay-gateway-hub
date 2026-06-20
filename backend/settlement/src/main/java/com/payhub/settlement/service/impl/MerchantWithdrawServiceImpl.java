@@ -1,6 +1,7 @@
 package com.payhub.settlement.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -54,6 +55,15 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
     @Value("${payhub.merchant.withdraw.t1-arrive-days:1}")
     private Integer t1ArriveDays;
 
+    @Value("${payhub.merchant.withdraw.retry.max-times:5}")
+    private Integer maxRetryTimes;
+
+    @Value("${payhub.merchant.withdraw.retry.base-delay-minutes:1}")
+    private Integer retryBaseDelayMinutes;
+
+    @Value("${payhub.merchant.withdraw.t1-batch-cron:0 0 2 * * ?}")
+    private String t1BatchCron;
+
     private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     @Override
@@ -79,11 +89,19 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
         BigDecimal actualAmount = request.getWithdrawAmount().subtract(feeAmount);
 
         MerchantInfo merchantInfo = getMerchantInfo(request.getMerchantNo());
+        if (merchantInfo == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "商户信息不存在");
+        }
+        if (StrUtil.isBlank(merchantInfo.getSettlementBankName())
+                || StrUtil.isBlank(merchantInfo.getSettlementBankAccount())
+                || StrUtil.isBlank(merchantInfo.getSettlementAccountName())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "商户未配置结算银行卡，请先在商户后台绑定结算卡");
+        }
 
         MerchantWithdraw withdraw = new MerchantWithdraw();
         withdraw.setWithdrawNo(OrderNoGenerator.generateWithPrefix("MW"));
         withdraw.setMerchantNo(request.getMerchantNo());
-        withdraw.setMerchantName(merchantInfo != null ? merchantInfo.getMerchantName() : "");
+        withdraw.setMerchantName(merchantInfo.getMerchantName());
         withdraw.setWithdrawAmount(request.getWithdrawAmount());
         withdraw.setActualAmount(actualAmount);
         withdraw.setFeeAmount(feeAmount);
@@ -103,14 +121,15 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
                     withdraw.getWithdrawNo(), request.getMerchantNo(), request.getWithdrawAmount());
         }
 
-        withdraw.setBankName(request.getBankName());
-        withdraw.setBankAccount(request.getBankAccount());
-        withdraw.setAccountName(request.getAccountName());
+        withdraw.setBankName(merchantInfo.getSettlementBankName());
+        withdraw.setBankAccount(merchantInfo.getSettlementBankAccount());
+        withdraw.setAccountName(merchantInfo.getSettlementAccountName());
         withdraw.setRemark(request.getRemark());
+        withdraw.setTransferRetryCount(0);
         this.save(withdraw);
 
         if (!needAudit && WithdrawTypeEnum.INSTANT.getCode().equals(request.getWithdrawType())) {
-            log.info("即时到账提现，自动执行转账: withdrawNo={}", withdraw.getWithdrawNo());
+            log.info("即时到账提现，审核通过后自动执行转账: withdrawNo={}", withdraw.getWithdrawNo());
             executeTransfer(withdraw.getId());
         }
 
@@ -265,17 +284,75 @@ public class MerchantWithdrawServiceImpl extends ServiceImpl<MerchantWithdrawMap
     @Transactional(rollbackFor = Exception.class)
     public void retryFailedWithdraw() {
         LambdaQueryWrapper<MerchantWithdraw> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(MerchantWithdraw::getWithdrawStatus, MerchantWithdrawStatusEnum.FAILED.getCode());
+        wrapper.eq(MerchantWithdraw::getWithdrawStatus, MerchantWithdrawStatusEnum.FAILED.getCode())
+                .lt(MerchantWithdraw::getTransferRetryCount, maxRetryTimes)
+                .and(w -> w.isNull(MerchantWithdraw::getNextTransferRetryTime)
+                        .or().le(MerchantWithdraw::getNextTransferRetryTime, LocalDateTime.now()));
         List<MerchantWithdraw> failedList = this.list(wrapper);
+        int successCount = 0;
         for (MerchantWithdraw withdraw : failedList) {
             try {
-                log.info("重试商户提现(统一链路): id={}, withdrawNo={}", withdraw.getId(), withdraw.getWithdrawNo());
+                int retryCount = withdraw.getTransferRetryCount() == null ? 0 : withdraw.getTransferRetryCount();
+                if (retryCount >= maxRetryTimes) {
+                    log.warn("提现重试已达最大次数，跳过: withdrawNo={}, retryCount={}", withdraw.getWithdrawNo(), retryCount);
+                    continue;
+                }
+                log.info("重试商户提现(统一链路): id={}, withdrawNo={}, retryCount={}",
+                        withdraw.getId(), withdraw.getWithdrawNo(), retryCount);
                 UnifiedTransferService.TransferContext ctx = unifiedTransferService.buildContextForMerchantWithdraw(withdraw.getId());
                 unifiedTransferService.executeTransfer(ctx);
+                successCount++;
             } catch (Exception e) {
                 log.error("重试商户提现失败(统一链路): id={}", withdraw.getId(), e);
+                updateNextRetryTime(withdraw.getId());
             }
         }
+        log.info("商户提现重试任务完成: total={}, success={}", failedList.size(), successCount);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void processT1Batch(int batchSize) {
+        log.info("开始执行T+1提现批量转账任务, batchSize={}", batchSize);
+        LambdaQueryWrapper<MerchantWithdraw> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MerchantWithdraw::getWithdrawStatus, MerchantWithdrawStatusEnum.AUDIT_PASSED.getCode())
+                .eq(MerchantWithdraw::getWithdrawType, WithdrawTypeEnum.T1.getCode())
+                .orderByAsc(MerchantWithdraw::getCreatedAt)
+                .last("LIMIT " + batchSize);
+        List<MerchantWithdraw> t1List = this.list(wrapper);
+        if (t1List.isEmpty()) {
+            log.info("无待处理的T+1提现记录");
+            return;
+        }
+        int successCount = 0;
+        int failCount = 0;
+        for (MerchantWithdraw withdraw : t1List) {
+            try {
+                log.info("T+1批量转账处理: withdrawNo={}, merchantNo={}, amount={}",
+                        withdraw.getWithdrawNo(), withdraw.getMerchantNo(), withdraw.getWithdrawAmount());
+                executeTransfer(withdraw.getId());
+                successCount++;
+            } catch (Exception e) {
+                log.error("T+1批量转账失败: withdrawNo={}", withdraw.getWithdrawNo(), e);
+                failCount++;
+            }
+        }
+        log.info("T+1提现批量转账任务完成: total={}, success={}, fail={}", t1List.size(), successCount, failCount);
+    }
+
+    @Override
+    public void updateNextRetryTime(Long id) {
+        MerchantWithdraw withdraw = this.getById(id);
+        if (withdraw == null) {
+            return;
+        }
+        int retryCount = withdraw.getTransferRetryCount() == null ? 0 : withdraw.getTransferRetryCount();
+        int delayMinutes = (int) Math.pow(retryBaseDelayMinutes, Math.min(retryCount, maxRetryTimes - 1));
+        LocalDateTime nextRetryTime = LocalDateTime.now().plusMinutes(delayMinutes);
+        withdraw.setNextTransferRetryTime(nextRetryTime);
+        this.updateById(withdraw);
+        log.info("设置下一次重试时间: withdrawNo={}, retryCount={}, nextRetryTime={}",
+                withdraw.getWithdrawNo(), retryCount, nextRetryTime);
     }
 
     @Override

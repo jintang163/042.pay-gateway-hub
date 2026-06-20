@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS merchant_withdraw (
     INDEX idx_merchant_no (merchant_no),
     INDEX idx_withdraw_no (withdraw_no),
     INDEX idx_withdraw_status (withdraw_status),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_merchant_status (merchant_no, withdraw_status),
+    INDEX idx_status_created (withdraw_status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户提现表';
 
 -- =====================================================
@@ -44,18 +46,22 @@ CREATE TABLE IF NOT EXISTS merchant_withdraw (
 -- payhub:
 --   merchant:
 --     withdraw:
---       min-amount: 10          # 最低提现金额（元）
---       max-amount: 500000    # 最高提现金额（元）
---       audit-threshold: 50000    # 人工审核门槛（元），超过此金额需要人工审核
---       t1-arrive-days: 1         # T+1到账天数
+--       min-amount: 10                    # 最低提现金额（元）
+--       max-amount: 500000                # 最高提现金额（元）
+--       audit-threshold: 50000            # 人工审核门槛（元），超过此金额需要人工审核
+--       t1-arrive-days: 1                 # T+1到账天数
+--       t1-batch-enabled: true            # 是否启用T+1批量转账定时任务
+--       t1-batch-size: 100                # T+1批量转账每次处理数量
+--       t1-batch-cron: "0 0 2 * * ?"      # T+1批量转账执行时间（默认每天凌晨2点）
+--       retry-enabled: true               # 是否启用失败重试定时任务
+--       retry.max-times: 5                # 最大重试次数
+--       retry.base-delay-minutes: 1       # 重试基础延迟分钟数（指数退避基数）
 
 -- =====================================================
 -- 插入测试数据
 -- =====================================================
 
--- 模拟一些结算记录，用于测试提现
--- 注意：需要先有merchant_info表中有对应的商户
-
+-- 注意：需要先确保merchant_info表中有对应的商户
 -- 清理旧数据（可选）
 -- DELETE FROM merchant_withdraw WHERE merchant_no IN ('M000001', 'M000002');
 
@@ -63,17 +69,17 @@ CREATE TABLE IF NOT EXISTS merchant_withdraw (
 INSERT INTO merchant_withdraw (
     withdraw_no, merchant_no, merchant_name, withdraw_amount, actual_amount, fee_amount,
     withdraw_type, withdraw_status, bank_name, bank_account, account_name,
-    audit_user, audit_time, audit_remark, remark
+    audit_user, audit_time, audit_remark, remark, transfer_retry_count
 ) VALUES
 ('MW20250620000001', 'M000001', '沙箱测试商户1', 1000.00, 1000.00, 0.00,
 1, 4, '中国工商银行', '6222021234567890123', '沙箱测试商户1',
-'SYSTEM', NOW(), '自动审核通过', '测试T+1提现'),
+'SYSTEM', NOW(), '自动审核通过', '测试T+1提现', 0),
 ('MW20250620000002', 'M000001', '沙箱测试商户1', 500.00, 499.50, 0.50,
 2, 6, '中国工商银行', '6222021234567890123', '沙箱测试商户1',
-'SYSTEM', NOW(), '自动审核通过', '测试即时到账提现'),
+'SYSTEM', NOW(), '自动审核通过', '测试即时到账提现', 0),
 ('MW20250620000003', 'M000002', '沙箱测试商户2', 60000.00, 60000.00, 0.00,
 1, 0, '中国建设银行', '6217001234567890456', '沙箱测试商户2',
-NULL, NULL, NULL, '大额提现待审核');
+NULL, NULL, NULL, '大额提现待审核', 0);
 
 -- =====================================================
 -- 商户余额查询视图（可选）
@@ -85,19 +91,10 @@ SELECT
     m.merchant_no,
     m.merchant_name,
     COUNT(w.id) AS total_count,
-    COALESCE(SUM(CASE WHEN w.withdraw_status = 4 OR w.withdraw_status = 6 THEN w.withdraw_amount ELSE 0 END) AS success_amount,
-    COALESCE(SUM(CASE WHEN w.withdraw_status = 0 THEN w.withdraw_amount ELSE 0 END) AS pending_amount,
+    COALESCE(SUM(CASE WHEN w.withdraw_status IN (4, 6) THEN w.withdraw_amount ELSE 0 END), 0) AS success_amount,
+    COALESCE(SUM(CASE WHEN w.withdraw_status = 0 THEN w.withdraw_amount ELSE 0 END), 0) AS pending_amount,
     COALESCE(SUM(w.fee_amount), 0) AS total_fee
 FROM merchant_info m
 LEFT JOIN merchant_withdraw w ON m.merchant_no = w.merchant_no AND w.deleted = 0
 WHERE m.deleted = 0
 GROUP BY m.merchant_no, m.merchant_name;
-
--- =====================================================
--- 索引优化建议
--- =====================================================
--- 1. 按商户号和状态查询：idx_merchant_status (merchant_no, withdraw_status)
--- 2. 按状态和创建时间：idx_status_created (withdraw_status, created_at)
-
-CREATE INDEX idx_merchant_status ON merchant_withdraw (merchant_no, withdraw_status);
-CREATE INDEX idx_status_created ON merchant_withdraw (withdraw_status, created_at);

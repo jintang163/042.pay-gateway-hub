@@ -36,5 +36,9 @@ public interface MerchantWithdrawService extends IService<MerchantWithdraw> {
 
     void retryFailedWithdraw();
 
+    void processT1Batch(int batchSize);
+
+    void updateNextRetryTime(Long id);
+
     BigDecimal calculateFee(BigDecimal amount, Integer withdrawType);
 }

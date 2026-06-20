@@ -378,17 +378,29 @@
             document.getElementById('bankName').textContent = data.settlementBankName;
           }
           if (data.settlementBankAccount) {
-            var account = data.settlementBankAccount;
-            if (account.length > 8) {
-              account = account.substring(0, 4) + ' **** **** ' + account.substring(account.length - 4);
-            }
-            document.getElementById('bankAccount').textContent = account;
+            document.getElementById('bankAccount').textContent = formatBankAccount(data.settlementBankAccount);
+            document.getElementById('bankAccountRaw').value = data.settlementBankAccount;
           }
           if (data.merchantName) {
             document.getElementById('accountName').textContent = data.merchantName;
           }
+          if (data.settlementAccountName) {
+            document.getElementById('accountName').textContent = data.settlementAccountName;
+          }
         }
       });
+  }
+
+  function formatBankAccount(account) {
+    if (!account) return '';
+    var result = '';
+    for (var i = 0; i < account.length; i++) {
+      if (i > 0 && i % 4 === 0) {
+        result += ' ';
+      }
+      result += account[i];
+    }
+    return result;
   }
 
   function selectWithdrawType(type) {
@@ -447,9 +459,6 @@
         merchantNo: merchantNo,
         withdrawAmount: amount,
         withdrawType: selectedType,
-        bankName: document.getElementById('bankName').textContent,
-        bankAccount: document.getElementById('bankAccount').textContent.replace(/\s/g, ''),
-        accountName: document.getElementById('accountName').textContent,
         remark: document.getElementById('remark').value
       })
     })
