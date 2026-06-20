@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>商户提现</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      background: #f5f6fa;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 480px;
+      margin: 0 auto;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .logo {
+      width: 60px;
+      height: 60px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #07c160, #1677ff);
+      color: #fff;
+      font-size: 28px;
+      font-weight: bold;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 { font-size: 22px; color: #333; margin-bottom: 6px; }
+    .sub { font-size: 13px; color: #999; }
+
+    .balance-card {
+      background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
+      border-radius: 12px;
+      padding: 20px;
+      color: #fff;
+      margin-bottom: 24px;
+    }
+    .balance-label { font-size: 13px; opacity: 0.85; margin-bottom: 8px; }
+    .balance-amount { font-size: 32px; font-weight: 700; margin-bottom: 12px; }
+    .balance-detail {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block;
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #d9d9d9;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color .2s;
+      outline: none;
+    }
+    .form-input:focus { border-color: #1677ff; }
+    .form-input:disabled { background: #f5f5f5; color: #999; }
+
+    .withdraw-type {
+      display: flex;
+      gap: 12px;
+    }
+    .type-option {
+      flex: 1;
+      padding: 16px;
+      border: 2px solid #e8e8e8;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all .2s;
+      text-align: center;
+    }
+    .type-option.active {
+      border-color: #1677ff;
+      background: #f0f5ff;
+    }
+    .type-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 4px; }
+    .type-desc { font-size: 12px; color: #999; }
+    .type-fee { font-size: 12px; color: #1677ff; margin-top: 4px; font-weight: 500; }
+
+    .fee-info {
+      background: #fff7e6;
+      border: 1px solid #ffd591;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #d46b08;
+    }
+    .fee-info .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .fee-info .row:last-child { margin-bottom: 0; }
+    .fee-info .highlight { font-weight: 600; }
+
+    .bank-info {
+      background: #f6ffed;
+      border: 1px solid #b7eb8f;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #389e0d;
+    }
+    .bank-info .bank-name { font-weight: 600; margin-bottom: 4px; }
+    .bank-info .bank-account { font-family: monospace; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #1677ff;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s;
+      margin-bottom: 12px;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn:disabled { background: #d9d9d9; cursor: not-allowed; }
+    .btn-outline {
+      background: #fff;
+      color: #1677ff;
+      border: 1px solid #1677ff;
+    }
+
+    .tip {
+      background: #f0f5ff;
+      border-radius: 10px;
+      padding: 14px 12px;
+      font-size: 13px;
+      color: #1d39c4;
+      margin-top: 20px;
+      line-height: 1.6;
+    }
+    .tip ul { padding-left: 20px; margin-top: 8px; }
+    .tip li { margin-bottom: 4px; }
+
+    .records-section {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+    }
+    .records-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .record-item {
+      padding: 12px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .record-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .record-amount { font-size: 18px; font-weight: 600; color: #333; }
+    .record-status {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .status-pending { background: #fff7e6; color: #d46b08; }
+    .status-success { background: #f6ffed; color: #389e0d; }
+    .status-failed { background: #fff1f0; color: #cf1322; }
+    .status-transferring { background: #e6f7ff; color: #0958d9; }
+    .record-info {
+      font-size: 12px;
+      color: #999;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 360px;
+      width: 90%;
+      text-align: center;
+    }
+    .modal-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+    }
+    .modal-icon.success { background: #f6ffed; color: #52c41a; }
+    .modal-icon.error { background: #fff1f0; color: #ff4d4f; }
+    .modal-icon.warning { background: #fff7e6; color: #faad14; }
+    .modal-title { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .modal-desc { font-size: 14px; color: #666; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">¥</div>
+      <h1>商户提现</h1>
+      <p class="sub">将结算余额提现至绑定银行卡</p>
+    </div>
+
+    <div class="balance-card">
+      <div class="balance-label">可提现余额</div>
+      <div class="balance-amount" id="availableBalance">¥0.00</div>
+      <div class="balance-detail">
+        <span>待审核: <span id="pendingAmount">¥0.00</span></span>
+        <span>已提现: <span id="totalWithdraw">¥0.00</span></span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">提现金额</label>
+      <input type="number" class="form-input" id="withdrawAmount" placeholder="请输入提现金额" step="0.01" min="10"/>
+      <div style="margin-top: 8px; font-size: 12px; color: #999;">
+        最低10.00元，最高500,000.00元，
+        <a href="javascript:void(0)" onclick="document.getElementById('withdrawAmount').value = document.getElementById('maxAmount').textContent.replace(/[^0-9.]/g, '')">全部提现</a>
+        <span id="maxAmount" style="display:none">0</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">提现方式</label>
+      <div class="withdraw-type">
+        <div class="type-option active" data-type="1" onclick="selectWithdrawType(1)">
+          <div class="type-title">T+1到账</div>
+          <div class="type-desc">下一个工作日到账</div>
+          <div class="type-fee">免手续费</div>
+        </div>
+        <div class="type-option" data-type="2" onclick="selectWithdrawType(2)">
+          <div class="type-title">即时到账</div>
+          <div class="type-desc">实时到账</div>
+          <div class="type-fee">手续费0.1%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fee-info" id="feeInfo" style="display:none;">
+      <div class="row">
+        <span>提现金额</span>
+        <span class="highlight" id="displayAmount">¥0.00</span>
+      </div>
+      <div class="row">
+        <span>手续费</span>
+        <span class="highlight" id="displayFee">¥0.00</span>
+      </div>
+      <div class="row">
+        <span>实际到账</span>
+        <span class="highlight" id="displayActual">¥0.00</span>
+      </div>
+    </div>
+
+    <div class="bank-info">
+      <div class="bank-name" id="bankName">中国工商银行</div>
+      <div class="bank-account" id="bankAccount">**** **** **** 1234</div>
+      <div style="margin-top:4px;">开户名: <span id="accountName">商户名称</span></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">备注（选填）</label>
+      <input type="text" class="form-input" id="remark" placeholder="请输入备注信息"/>
+    </div>
+
+    <button class="btn" id="submitBtn" onclick="submitWithdraw()">确认提现</button>
+    <button class="btn btn-outline" onclick="loadRecords()">查看提现记录</button>
+
+    <div class="tip">
+      <strong>温馨提示：</strong>
+      <ul>
+        <li>T+1到账：下一个工作日24:00前到账，免手续费</li>
+        <li>即时到账：实时到账，收取0.1%手续费</li>
+        <li>单笔提现金额≥50,000元需人工审核</li>
+        <li>每日提现次数不限，请确保银行卡信息正确</li>
+      </ul>
+    </div>
+
+    <div class="records-section" id="recordsSection" style="display:none;">
+      <div class="records-title">
+        <span>最近提现记录</span>
+        <a href="javascript:void(0)" style="font-size:13px;color:#1677ff;" onclick="loadRecords()">刷新</a>
+      </div>
+      <div id="recordsList"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <div class="modal-icon" id="modalIcon">✓</div>
+      <div class="modal-title" id="modalTitle">提现申请提交成功</div>
+      <div class="modal-desc" id="modalDesc">您的提现申请已提交，请耐心等待处理</div>
+      <button class="btn" onclick="closeModal()">我知道了</button>
+    </div>
+  </div>
+
+<script th:inline="javascript">
+  var merchantNo = /*[[${merchantNo}]]*/ '';
+  var apiBase = '/api/merchant/withdraw';
+  var selectedType = 1;
+  var instantFeeRate = 0.001;
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadBalance();
+    loadMerchantInfo();
+    document.getElementById('withdrawAmount').addEventListener('input', calculateFee);
+  });
+
+  function loadBalance() {
+    fetch(apiBase + '/balance/' + merchantNo)
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 0) {
+          var data = res.data;
+          document.getElementById('availableBalance').textContent = '¥' + formatAmount(data.availableBalance);
+          document.getElementById('pendingAmount').textContent = '¥' + formatAmount(data.pendingWithdrawAmount);
+          document.getElementById('totalWithdraw').textContent = '¥' + formatAmount(data.totalWithdrawAmount);
+          document.getElementById('maxAmount').textContent = formatAmount(data.availableBalance);
+          instantFeeRate = data.instantFeeRate / 100;
+        }
+      });
+  }
+
+  function loadMerchantInfo() {
+    fetch('/api/merchant/' + merchantNo)
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 0 && res.data) {
+          var data = res.data;
+          if (data.settlementBankName) {
+            document.getElementById('bankName').textContent = data.settlementBankName;
+          }
+          if (data.settlementBankAccount) {
+            var account = data.settlementBankAccount;
+            if (account.length > 8) {
+              account = account.substring(0, 4) + ' **** **** ' + account.substring(account.length - 4);
+            }
+            document.getElementById('bankAccount').textContent = account;
+          }
+          if (data.merchantName) {
+            document.getElementById('accountName').textContent = data.merchantName;
+          }
+        }
+      });
+  }
+
+  function selectWithdrawType(type) {
+    selectedType = type;
+    document.querySelectorAll('.type-option').forEach(el => {
+      el.classList.remove('active');
+    });
+    document.querySelector('.type-option[data-type="' + type + '"]').classList.add('active');
+    calculateFee();
+  }
+
+  function calculateFee() {
+    var amount = parseFloat(document.getElementById('withdrawAmount').value) || 0;
+    if (amount <= 0) {
+      document.getElementById('feeInfo').style.display = 'none';
+      return;
+    }
+
+    var fee = 0;
+    if (selectedType === 2) {
+      fee = amount * instantFeeRate;
+      fee = Math.round(fee * 100) / 100;
+    }
+    var actual = amount - fee;
+
+    document.getElementById('displayAmount').textContent = '¥' + formatAmount(amount);
+    document.getElementById('displayFee').textContent = '¥' + formatAmount(fee);
+    document.getElementById('displayActual').textContent = '¥' + formatAmount(actual);
+    document.getElementById('feeInfo').style.display = 'block';
+  }
+
+  function formatAmount(amount) {
+    if (amount === null || amount === undefined) return '0.00';
+    return parseFloat(amount).toFixed(2);
+  }
+
+  function submitWithdraw() {
+    var amount = parseFloat(document.getElementById('withdrawAmount').value);
+    if (!amount || amount <= 0) {
+      showModal('warning', '请输入提现金额', '请输入有效的提现金额');
+      return;
+    }
+    if (amount < 10) {
+      showModal('warning', '金额太小', '最低提现金额为10元');
+      return;
+    }
+
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+
+    fetch(apiBase + '/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantNo: merchantNo,
+        withdrawAmount: amount,
+        withdrawType: selectedType,
+        bankName: document.getElementById('bankName').textContent,
+        bankAccount: document.getElementById('bankAccount').textContent.replace(/\s/g, ''),
+        accountName: document.getElementById('accountName').textContent,
+        remark: document.getElementById('remark').value
+      })
+    })
+    .then(res => res.json())
+    .then(res => {
+      btn.disabled = false;
+      btn.textContent = '确认提现';
+      if (res.code === 0) {
+        if (amount >= 50000) {
+          showModal('success', '申请已提交', '大额提现已提交，需人工审核，请耐心等待');
+        } else {
+          showModal('success', '提现成功', selectedType === 2 ? '即时到账提现已处理完成' : 'T+1到账提现已提交，预计下一个工作日到账');
+        }
+        document.getElementById('withdrawAmount').value = '';
+        document.getElementById('remark').value = '';
+        document.getElementById('feeInfo').style.display = 'none';
+        loadBalance();
+      } else {
+        showModal('error', '提交失败', res.message || '提现申请提交失败，请稍后重试');
+      }
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.textContent = '确认提现';
+      showModal('error', '网络错误', '请检查网络连接后重试');
+    });
+  }
+
+  function loadRecords() {
+    document.getElementById('recordsSection').style.display = 'block';
+    fetch(apiBase + '/list?merchantNo=' + merchantNo + '&size=5')
+      .then(res => res.json())
+      .then(res => {
+        if (res.code === 0) {
+          var records = res.data.records || [];
+          var html = '';
+          if (records.length === 0) {
+            html = '<div style="text-align:center;padding:20px;color:#999;font-size:14px;">暂无提现记录</div>';
+          } else {
+            records.forEach(r => {
+              var statusClass = 'status-pending';
+              if (r.withdrawStatus === 4 || r.withdrawStatus === 6) statusClass = 'status-success';
+              else if (r.withdrawStatus === 5) statusClass = 'status-failed';
+              else if (r.withdrawStatus === 3) statusClass = 'status-transferring';
+
+              html += `
+                <div class="record-item">
+                  <div class="record-header">
+                    <span class="record-amount">-¥` + formatAmount(r.withdrawAmount) + `</span>
+                    <span class="record-status ` + statusClass + `">` + r.withdrawStatusDesc + `</span>
+                  </div>
+                  <div class="record-info">
+                    <span>` + r.withdrawTypeDesc + `</span>
+                    <span>` + (r.createdAt || '').substring(0, 16) + `</span>
+                  </div>
+                  <div class="record-info" style="margin-top:4px;">
+                    <span>手续费: ¥` + formatAmount(r.feeAmount) + `</span>
+                    <span>到账: ¥` + formatAmount(r.actualAmount) + `</span>
+                  </div>
+                </div>
+              `;
+            });
+          }
+          document.getElementById('recordsList').innerHTML = html;
+        }
+      });
+  }
+
+  function showModal(type, title, desc) {
+    var icon = document.getElementById('modalIcon');
+    icon.className = 'modal-icon ' + type;
+    icon.textContent = type === 'success' ? '✓' : (type === 'error' ? '✕' : '!');
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalDesc').textContent = desc;
+    document.getElementById('modal').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('show');
+  }
+</script>
+</body>
+</html>

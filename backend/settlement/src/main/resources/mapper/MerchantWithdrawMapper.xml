@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.payhub.settlement.mapper.MerchantWithdrawMapper">
+
+    <resultMap id="MerchantWithdrawMap" type="com.payhub.settlement.entity.MerchantWithdraw">
+        <id column="id" property="id"/>
+        <result column="withdraw_no" property="withdrawNo"/>
+        <result column="merchant_no" property="merchantNo"/>
+        <result column="merchant_name" property="merchantName"/>
+        <result column="withdraw_amount" property="withdrawAmount"/>
+        <result column="actual_amount" property="actualAmount"/>
+        <result column="fee_amount" property="feeAmount"/>
+        <result column="withdraw_type" property="withdrawType"/>
+        <result column="withdraw_status" property="withdrawStatus"/>
+        <result column="bank_name" property="bankName"/>
+        <result column="bank_account" property="bankAccount"/>
+        <result column="account_name" property="accountName"/>
+        <result column="audit_user" property="auditUser"/>
+        <result column="audit_time" property="auditTime"/>
+        <result column="audit_remark" property="auditRemark"/>
+        <result column="transfer_no" property="transferNo"/>
+        <result column="transfer_channel" property="transferChannel"/>
+        <result column="channel_transfer_no" property="channelTransferNo"/>
+        <result column="transfer_time" property="transferTime"/>
+        <result column="transfer_fail_reason" property="transferFailReason"/>
+        <result column="transfer_retry_count" property="transferRetryCount"/>
+        <result column="next_transfer_retry_time" property="nextTransferRetryTime"/>
+        <result column="arrive_time" property="arriveTime"/>
+        <result column="remark" property="remark"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectPageList" parameterType="map" resultMap="MerchantWithdrawMap">
+        SELECT
+            id,
+            withdraw_no,
+            merchant_no,
+            merchant_name,
+            withdraw_amount,
+            actual_amount,
+            fee_amount,
+            withdraw_type,
+            withdraw_status,
+            bank_name,
+            bank_account,
+            account_name,
+            audit_user,
+            audit_time,
+            audit_remark,
+            transfer_no,
+            transfer_channel,
+            channel_transfer_no,
+            transfer_time,
+            transfer_fail_reason,
+            transfer_retry_count,
+            next_transfer_retry_time,
+            arrive_time,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM merchant_withdraw
+        <where>
+            deleted = 0
+            <if test="params.withdrawNo != null and params.withdrawNo != ''">
+                AND withdraw_no = #{params.withdrawNo}
+            </if>
+            <if test="params.merchantNo != null and params.merchantNo != ''">
+                AND merchant_no = #{params.merchantNo}
+            </if>
+            <if test="params.merchantName != null and params.merchantName != ''">
+                AND merchant_name LIKE CONCAT('%', #{params.merchantName}, '%')
+            </if>
+            <if test="params.withdrawStatus != null">
+                AND withdraw_status = #{params.withdrawStatus}
+            </if>
+            <if test="params.withdrawType != null">
+                AND withdraw_type = #{params.withdrawType}
+            </if>
+            <if test="params.startDate != null and params.startDate != ''">
+                AND created_at <![CDATA[ >= ]]> #{params.startDate}
+            </if>
+            <if test="params.endDate != null and params.endDate != ''">
+                AND created_at <![CDATA[ <= ]]> #{params.endDate}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByMerchantNo" resultMap="MerchantWithdrawMap">
+        SELECT
+            id,
+            withdraw_no,
+            merchant_no,
+            merchant_name,
+            withdraw_amount,
+            actual_amount,
+            fee_amount,
+            withdraw_type,
+            withdraw_status,
+            bank_name,
+            bank_account,
+            account_name,
+            audit_user,
+            audit_time,
+            audit_remark,
+            transfer_no,
+            transfer_channel,
+            channel_transfer_no,
+            transfer_time,
+            transfer_fail_reason,
+            transfer_retry_count,
+            next_transfer_retry_time,
+            arrive_time,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM merchant_withdraw
+        WHERE deleted = 0 AND merchant_no = #{merchantNo}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByWithdrawNo" resultMap="MerchantWithdrawMap">
+        SELECT
+            id,
+            withdraw_no,
+            merchant_no,
+            merchant_name,
+            withdraw_amount,
+            actual_amount,
+            fee_amount,
+            withdraw_type,
+            withdraw_status,
+            bank_name,
+            bank_account,
+            account_name,
+            audit_user,
+            audit_time,
+            audit_remark,
+            transfer_no,
+            transfer_channel,
+            channel_transfer_no,
+            transfer_time,
+            transfer_fail_reason,
+            transfer_retry_count,
+            next_transfer_retry_time,
+            arrive_time,
+            remark,
+            created_at,
+            updated_at,
+            deleted
+        FROM merchant_withdraw
+        WHERE deleted = 0 AND withdraw_no = #{withdrawNo}
+        LIMIT 1
+    </select>
+
+    <select id="selectTotalWithdrawByMerchant" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(withdraw_amount), 0)
+        FROM merchant_withdraw
+        WHERE deleted = 0
+          AND merchant_no = #{merchantNo}
+          <if test="withdrawStatus != null">
+              AND withdraw_status = #{withdrawStatus}
+          </if>
+    </select>
+
+    <select id="selectTotalSettleAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(actual_settle_amount), 0)
+        FROM settlement_record
+        WHERE deleted = 0
+          AND merchant_no = #{merchantNo}
+          AND settle_status = 2
+    </select>
+
+</mapper>

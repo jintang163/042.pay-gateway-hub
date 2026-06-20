@@ -12,6 +12,8 @@ public interface UnifiedTransferService {
 
     TransferContext buildContextForSettlementRecord(Long settlementId);
 
+    TransferContext buildContextForMerchantWithdraw(Long withdrawId);
+
     TransferResult executeTransfer(TransferContext context);
 
     TransferResult queryTransferStatus(String transferNo, String channelTransferNo, String channel);

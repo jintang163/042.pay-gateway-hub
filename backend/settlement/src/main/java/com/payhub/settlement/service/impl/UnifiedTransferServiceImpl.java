@@ -14,12 +14,15 @@ import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.merchant.entity.MerchantInfo;
 import com.payhub.merchant.service.MerchantInfoService;
 import com.payhub.settlement.entity.AgentWithdraw;
+import com.payhub.settlement.entity.MerchantWithdraw;
 import com.payhub.settlement.entity.PaySplitDetail;
 import com.payhub.settlement.entity.SettlementRecord;
 import com.payhub.settlement.entity.SplitReceiver;
 import com.payhub.settlement.enums.AgentWithdrawStatusEnum;
+import com.payhub.settlement.enums.MerchantWithdrawStatusEnum;
 import com.payhub.settlement.enums.SplitReceiverVerifyStatusEnum;
 import com.payhub.settlement.mapper.AgentWithdrawMapper;
+import com.payhub.settlement.mapper.MerchantWithdrawMapper;
 import com.payhub.settlement.mapper.PaySplitDetailMapper;
 import com.payhub.settlement.mapper.SettlementRecordMapper;
 import com.payhub.settlement.service.SplitReceiverService;
@@ -40,6 +43,7 @@ public class UnifiedTransferServiceImpl implements UnifiedTransferService {
     public static final String SOURCE_SPLIT_DETAIL = "SPLIT_DETAIL";
     public static final String SOURCE_AGENT_WITHDRAW = "AGENT_WITHDRAW";
     public static final String SOURCE_SETTLEMENT = "SETTLEMENT";
+    public static final String SOURCE_MERCHANT_WITHDRAW = "MERCHANT_WITHDRAW";
 
     public static final int TRANSFER_STATUS_PENDING = 0;
     public static final int TRANSFER_STATUS_PROCESSING = 1;
@@ -63,6 +67,9 @@ public class UnifiedTransferServiceImpl implements UnifiedTransferService {
 
     @Autowired
     private SettlementRecordMapper settlementRecordMapper;
+
+    @Autowired
+    private MerchantWithdrawMapper merchantWithdrawMapper;
 
     @Autowired
     private SplitReceiverService splitReceiverService;
@@ -167,6 +174,31 @@ public class UnifiedTransferServiceImpl implements UnifiedTransferService {
                 }
             }
         }
+        return ctx;
+    }
+
+    @Override
+    public TransferContext buildContextForMerchantWithdraw(Long withdrawId) {
+        MerchantWithdraw withdraw = merchantWithdrawMapper.selectById(withdrawId);
+        if (withdraw == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "提现申请不存在");
+        }
+
+        TransferContext ctx = new TransferContext();
+        ctx.setSourceId(withdraw.getId());
+        ctx.setSourceType(SOURCE_MERCHANT_WITHDRAW);
+        ctx.setSourceNo(withdraw.getWithdrawNo());
+        ctx.setTransferNo(StrUtil.isNotBlank(withdraw.getTransferNo())
+                ? withdraw.getTransferNo() : OrderNoGenerator.generateWithPrefix("TF"));
+        ctx.setMerchantNo(withdraw.getMerchantNo());
+        ctx.setChannel(StrUtil.isNotBlank(withdraw.getTransferChannel())
+                ? withdraw.getTransferChannel() : resolveChannelByReceiver(withdraw.getBankAccount()));
+        ctx.setReceiverAccount(withdraw.getBankAccount());
+        ctx.setReceiverName(withdraw.getAccountName());
+        ctx.setBankName(withdraw.getBankName());
+        ctx.setAmountFen(normalizeAmountToFen(withdraw.getActualAmount(), "WITHDRAW_AMOUNT"));
+        ctx.setRemark(StrUtil.isNotBlank(withdraw.getRemark()) ? withdraw.getRemark() : "商户提现");
+        ctx.setSkipIdCardVerify(true);
         return ctx;
     }
 
@@ -367,6 +399,18 @@ public class UnifiedTransferServiceImpl implements UnifiedTransferService {
                 }
                 break;
             }
+            case SOURCE_MERCHANT_WITHDRAW: {
+                MerchantWithdraw w = merchantWithdrawMapper.selectById(ctx.getSourceId());
+                if (w != null) {
+                    w.setTransferNo(transferNo);
+                    w.setTransferChannel(channel);
+                    w.setWithdrawStatus(MerchantWithdrawStatusEnum.TRANSFERRING.getCode());
+                    int retry = w.getTransferRetryCount() == null ? 0 : w.getTransferRetryCount();
+                    w.setTransferRetryCount(retry + 1);
+                    merchantWithdrawMapper.updateById(w);
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -447,6 +491,29 @@ public class UnifiedTransferServiceImpl implements UnifiedTransferService {
                     }
                 }
                 settlementRecordMapper.updateById(s);
+                break;
+            }
+            case SOURCE_MERCHANT_WITHDRAW: {
+                MerchantWithdraw w = merchantWithdrawMapper.selectById(ctx.getSourceId());
+                if (w == null) break;
+                w.setChannelTransferNo(result.getChannelTransferNo());
+                if (success) {
+                    w.setWithdrawStatus(MerchantWithdrawStatusEnum.SUCCESS.getCode());
+                    w.setTransferTime(result.getCompleteTime() != null ? result.getCompleteTime() : now);
+                    w.setTransferFailReason(null);
+                    w.setNextTransferRetryTime(null);
+                } else if (TransferResult.STATUS_PROCESSING.equals(status)) {
+                    w.setWithdrawStatus(MerchantWithdrawStatusEnum.TRANSFERRING.getCode());
+                } else {
+                    w.setWithdrawStatus(MerchantWithdrawStatusEnum.FAILED.getCode());
+                    w.setTransferFailReason(result.getFailReason());
+                    int retry = w.getTransferRetryCount() == null ? 0 : w.getTransferRetryCount();
+                    if (retry < 5) {
+                        int minutes = (int) Math.pow(2, Math.min(retry, 5));
+                        w.setNextTransferRetryTime(now.plusMinutes(minutes));
+                    }
+                }
+                merchantWithdrawMapper.updateById(w);
                 break;
             }
             default:
