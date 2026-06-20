@@ -119,4 +119,62 @@ public class SandboxSceneSimulator {
         String errorCode = scene == SandboxSceneEnum.FAILED ? "PAY_FAIL" : "SYSTEM_ERROR";
         return UnifiedOrderResponse.fail(errorCode, errorMsg);
     }
+
+    public static BarcodePayResponse simulateBarcodePay(BarcodePayRequest request,
+                                                          java.util.function.Supplier<BarcodePayResponse> successSupplier) {
+        SandboxSceneEnum scene = SandboxSceneEnum.getByCode(SandboxContext.getScene());
+        log.info("[沙箱场景模拟] 条码支付(被扫), scene={}, orderNo={}", scene.getCode(), request.getOrderNo());
+
+        switch (scene) {
+            case TIMEOUT:
+                try {
+                    log.info("[沙箱场景模拟] 模拟条码支付超时，sleep 3秒...");
+                    TimeUnit.SECONDS.sleep(3);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return BarcodePayResponse.fail("TIMEOUT", "条码支付超时，请稍后重试");
+            case INSUFFICIENT_BALANCE:
+                return BarcodePayResponse.fail("INSUFFICIENT_BALANCE", "用户账户余额不足");
+            case FAILED:
+            case CHANNEL_ERROR:
+                return BarcodePayResponse.fail("PAY_FAIL",
+                        scene == SandboxSceneEnum.FAILED ? "条码支付失败" : "通道系统异常，请稍后重试");
+            case SUCCESS:
+            case REPEAT_NOTIFY:
+            case SIGN_ERROR:
+            case AMOUNT_MISMATCH:
+            default:
+                return successSupplier.get();
+        }
+    }
+
+    public static FacePayResponse simulateFacePay(FacePayRequest request,
+                                                     java.util.function.Supplier<FacePayResponse> successSupplier) {
+        SandboxSceneEnum scene = SandboxSceneEnum.getByCode(SandboxContext.getScene());
+        log.info("[沙箱场景模拟] 刷脸支付, scene={}, orderNo={}", scene.getCode(), request.getOrderNo());
+
+        switch (scene) {
+            case TIMEOUT:
+                try {
+                    log.info("[沙箱场景模拟] 模拟刷脸支付超时，sleep 3秒...");
+                    TimeUnit.SECONDS.sleep(3);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return FacePayResponse.fail("TIMEOUT", "刷脸支付超时，请稍后重试");
+            case INSUFFICIENT_BALANCE:
+                return FacePayResponse.fail("INSUFFICIENT_BALANCE", "用户账户余额不足");
+            case FAILED:
+            case CHANNEL_ERROR:
+                return FacePayResponse.fail("FACE_FAIL",
+                        scene == SandboxSceneEnum.FAILED ? "刷脸支付失败" : "通道系统异常，请稍后重试");
+            case SUCCESS:
+            case REPEAT_NOTIFY:
+            case SIGN_ERROR:
+            case AMOUNT_MISMATCH:
+            default:
+                return successSupplier.get();
+        }
+    }
 }

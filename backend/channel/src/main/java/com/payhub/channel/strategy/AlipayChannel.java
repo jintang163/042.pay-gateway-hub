@@ -471,4 +471,204 @@ public class AlipayChannel extends AbstractPayChannel {
                 return "PROCESSING";
         }
     }
+
+    @Override
+    public BarcodePayResponse barcodePay(BarcodePayRequest request) {
+        log.info("[支付宝]开始条码支付(被扫), 订单号:{}, 金额:{}", request.getOrderNo(), request.getAmount());
+
+        ChannelProperties.AlipayProperties config = channelProperties.getAlipay();
+
+        Map<String, String> bizParams = new TreeMap<>();
+        bizParams.put("out_trade_no", request.getOrderNo());
+        bizParams.put("total_amount", request.getAmount().toString());
+        bizParams.put("subject", request.getSubject());
+        bizParams.put("auth_code", request.getAuthCode());
+        bizParams.put("scene", StrUtil.isNotBlank(request.getScene()) ? request.getScene() : "bar_code");
+        if (StrUtil.isNotBlank(request.getDetail())) {
+            bizParams.put("body", request.getDetail());
+        }
+
+        Map<String, String> params = new TreeMap<>();
+        params.put("app_id", StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : config.getAppId());
+        params.put("method", "alipay.trade.pay");
+        params.put("charset", config.getCharset());
+        params.put("sign_type", config.getSignType());
+        params.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        params.put("version", "1.0");
+        params.put("notify_url", StrUtil.isNotBlank(request.getNotifyUrl()) ? request.getNotifyUrl() : config.getNotifyUrl());
+        params.put("biz_content", JSON.toJSONString(bizParams));
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(params);
+
+        try {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
+                return super.barcodePay(request);
+            }
+
+            String sign = SignUtil.alipaySign(params,
+                    StrUtil.isNotBlank(request.getChannelSecretKey()) ? request.getChannelSecretKey() : config.getMerchantPrivateKey());
+            params.put("sign", sign);
+
+            String result = HttpUtil.postForm(config.getGatewayUrl(), params);
+            JSONObject jsonObject = JSON.parseObject(result);
+            JSONObject responseData = jsonObject.getJSONObject("alipay_trade_pay_response");
+
+            if (responseData == null) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "支付宝响应为空");
+                return BarcodePayResponse.fail("SYSTEM_ERROR", "支付宝响应异常");
+            }
+
+            String code = responseData.getString("code");
+            String subCode = responseData.getString("sub_code");
+
+            if ("10000".equals(code)) {
+                String tradeNo = responseData.getString("trade_no");
+                BigDecimal amount = new BigDecimal(responseData.getString("total_amount"));
+                String gmtPayment = responseData.getString("gmt_payment");
+                LocalDateTime payTime = StrUtil.isNotBlank(gmtPayment)
+                        ? LocalDateTime.parse(gmtPayment, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                        : LocalDateTime.now();
+
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        config.getGatewayUrl(), requestData, result, tradeNo,
+                        (int) (System.currentTimeMillis() - startTime), null);
+                return BarcodePayResponse.success(
+                        request.getOrderNo(),
+                        tradeNo,
+                        amount,
+                        payTime,
+                        responseData.getString("buyer_user_id"),
+                        responseData.getString("buyer_logon_id")
+                );
+            } else if ("10003".equals(code) || "WAIT_BUYER_PAY".equalsIgnoreCase(subCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "用户支付中");
+                return BarcodePayResponse.paying(request.getOrderNo(),
+                        responseData.getString("sub_msg") != null ? responseData.getString("sub_msg") : "用户支付中，请等待");
+            } else {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), responseData.getString("sub_msg"));
+                return BarcodePayResponse.fail(subCode != null ? subCode : code,
+                        responseData.getString("sub_msg") != null ? responseData.getString("sub_msg") : "支付宝条码支付失败");
+            }
+        } catch (Exception e) {
+            log.error("[支付宝]条码支付异常", e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                    config.getGatewayUrl(), requestData, null, null,
+                    (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return BarcodePayResponse.fail("SYSTEM_ERROR", "支付宝条码支付异常: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public FacePayResponse facePay(FacePayRequest request) {
+        log.info("[支付宝]开始刷脸支付, 订单号:{}, 金额:{}", request.getOrderNo(), request.getAmount());
+
+        ChannelProperties.AlipayProperties config = channelProperties.getAlipay();
+
+        Map<String, String> bizParams = new TreeMap<>();
+        bizParams.put("out_trade_no", request.getOrderNo());
+        bizParams.put("total_amount", request.getAmount().toString());
+        bizParams.put("subject", request.getSubject());
+        if (StrUtil.isNotBlank(request.getDetail())) {
+            bizParams.put("body", request.getDetail());
+        }
+        if (StrUtil.isNotBlank(request.getFaceCode())) {
+            bizParams.put("face_code", request.getFaceCode());
+        }
+        if (StrUtil.isNotBlank(request.getOpenId())) {
+            bizParams.put("buyer_id", request.getOpenId());
+        }
+        if (StrUtil.isNotBlank(request.getSceneInfo())) {
+            bizParams.put("scene_info", request.getSceneInfo());
+        }
+
+        Map<String, String> params = new TreeMap<>();
+        params.put("app_id", StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : config.getAppId());
+        params.put("method", "alipay.trade.facepay.pay");
+        params.put("charset", config.getCharset());
+        params.put("sign_type", config.getSignType());
+        params.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        params.put("version", "1.0");
+        params.put("notify_url", StrUtil.isNotBlank(request.getNotifyUrl()) ? request.getNotifyUrl() : config.getNotifyUrl());
+        params.put("biz_content", JSON.toJSONString(bizParams));
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(params);
+
+        try {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
+                return super.facePay(request);
+            }
+
+            String sign = SignUtil.alipaySign(params,
+                    StrUtil.isNotBlank(request.getChannelSecretKey()) ? request.getChannelSecretKey() : config.getMerchantPrivateKey());
+            params.put("sign", sign);
+
+            String result = HttpUtil.postForm(config.getGatewayUrl(), params);
+            JSONObject jsonObject = JSON.parseObject(result);
+            JSONObject responseData = jsonObject.getJSONObject("alipay_trade_facepay_pay_response");
+
+            if (responseData == null) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "支付宝响应为空");
+                return FacePayResponse.fail("SYSTEM_ERROR", "支付宝响应异常");
+            }
+
+            String code = responseData.getString("code");
+            String subCode = responseData.getString("sub_code");
+
+            if ("10000".equals(code)) {
+                String tradeNo = responseData.getString("trade_no");
+                BigDecimal amount = new BigDecimal(responseData.getString("total_amount"));
+                String gmtPayment = responseData.getString("gmt_payment");
+                LocalDateTime payTime = StrUtil.isNotBlank(gmtPayment)
+                        ? LocalDateTime.parse(gmtPayment, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                        : LocalDateTime.now();
+
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        config.getGatewayUrl(), requestData, result, tradeNo,
+                        (int) (System.currentTimeMillis() - startTime), null);
+                return FacePayResponse.success(
+                        request.getOrderNo(),
+                        tradeNo,
+                        amount,
+                        payTime,
+                        responseData.getString("buyer_user_id"),
+                        responseData.getString("buyer_logon_id"),
+                        responseData.getString("open_id")
+                );
+            } else if ("FACE_AUTH_REQUIRED".equalsIgnoreCase(subCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "需要刷脸验证");
+                return FacePayResponse.needAuth(responseData.getString("face_auth_token"),
+                        responseData.getString("sub_msg") != null ? responseData.getString("sub_msg") : "需要再次刷脸验证");
+            } else if ("10003".equals(code) || "WAIT_BUYER_PAY".equalsIgnoreCase(subCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "用户确认中");
+                return FacePayResponse.paying(request.getOrderNo(),
+                        responseData.getString("sub_msg") != null ? responseData.getString("sub_msg") : "请在手机上确认支付");
+            } else {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        config.getGatewayUrl(), requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), responseData.getString("sub_msg"));
+                return FacePayResponse.fail(subCode != null ? subCode : code,
+                        responseData.getString("sub_msg") != null ? responseData.getString("sub_msg") : "支付宝刷脸支付失败");
+            }
+        } catch (Exception e) {
+            log.error("[支付宝]刷脸支付异常", e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                    config.getGatewayUrl(), requestData, null, null,
+                    (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return FacePayResponse.fail("SYSTEM_ERROR", "支付宝刷脸支付异常: " + e.getMessage());
+        }
+    }
 }

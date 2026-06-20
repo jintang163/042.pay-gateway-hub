@@ -9,6 +9,10 @@ public interface PayChannelStrategy {
 
     UnifiedOrderResponse unifiedOrder(UnifiedOrderRequest request);
 
+    BarcodePayResponse barcodePay(BarcodePayRequest request);
+
+    FacePayResponse facePay(FacePayRequest request);
+
     QueryOrderResponse queryOrder(String orderNo, String channelTradeNo);
 
     RefundResponse refund(RefundRequest request);

@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public abstract class AbstractPayChannel implements PayChannelStrategy {
 
+    protected static final int BARCODE_RETRY_MAX_COUNT = 10;
+
     protected static PayChannelLogMapper payChannelLogMapper;
 
     @Autowired
@@ -107,6 +109,18 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
                 appParams.put("timeStamp", String.valueOf(System.currentTimeMillis() / 1000));
                 appParams.put("sign", "sandbox_sign_" + IdUtil.fastSimpleUUID());
                 payParams = JSON.toJSONString(appParams);
+                break;
+            case BARCODE:
+                Map<String, String> barcodeParams = new ConcurrentHashMap<>();
+                barcodeParams.put("tip", "请使用扫码枪扫描用户付款码");
+                barcodeParams.put("expireTime", expireTime);
+                payParams = JSON.toJSONString(barcodeParams);
+                break;
+            case FACEPAY:
+                Map<String, String> faceParams = new ConcurrentHashMap<>();
+                faceParams.put("tip", "请将面部对准摄像头完成刷脸支付");
+                faceParams.put("expireTime", expireTime);
+                payParams = JSON.toJSONString(faceParams);
                 break;
             default:
                 Map<String, String> defaultParams = new ConcurrentHashMap<>();
@@ -250,5 +264,133 @@ public abstract class AbstractPayChannel implements PayChannelStrategy {
 
         log.info("[{}]对账单下载完成, 商户:{}, 总笔数:{}, 总金额:{}", getChannelCode(), merchantNo, items.size(), totalAmount);
         return bill;
+    }
+
+    @Override
+    public BarcodePayResponse barcodePay(BarcodePayRequest request) {
+        log.info("[{}]开始条码支付(被扫), 订单号:{}, 金额:{}, 付款码:{}",
+                getChannelCode(), request.getOrderNo(), request.getAmount(),
+                maskAuthCode(request.getAuthCode()));
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(request);
+
+        try {
+            if (SandboxContext.isSandboxMode()) {
+                BarcodePayResponse response = SandboxSceneSimulator.simulateBarcodePay(request,
+                        () -> doBuildBarcodePayResponse(request));
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        "", requestData, JSON.toJSONString(response),
+                        response.getChannelTradeNo(), (int) (System.currentTimeMillis() - startTime), null);
+                return response;
+            }
+            BarcodePayResponse response = doBuildBarcodePayResponse(request);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                    "", requestData, JSON.toJSONString(response),
+                    response.getChannelTradeNo(), (int) (System.currentTimeMillis() - startTime), null);
+            return response;
+        } catch (Exception e) {
+            log.error("[{}]条码支付异常", getChannelCode(), e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                    "", requestData, null, null, (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return BarcodePayResponse.fail("SYSTEM_ERROR", "条码支付异常: " + e.getMessage());
+        }
+    }
+
+    private BarcodePayResponse doBuildBarcodePayResponse(BarcodePayRequest request) {
+        String channelTradeNo = generateChannelTradeNo();
+        String buyerUserId = "sandbox_buyer_" + IdUtil.fastSimpleUUID().substring(0, 8);
+        String buyerLogonId = "user***@example.com";
+
+        double rand = Math.random();
+        if (rand < 0.75) {
+            log.info("[{}]条码支付成功(沙箱), 订单号:{}, 通道交易号:{}",
+                    getChannelCode(), request.getOrderNo(), channelTradeNo);
+            return BarcodePayResponse.success(
+                    request.getOrderNo(),
+                    channelTradeNo,
+                    request.getAmount(),
+                    LocalDateTime.now(),
+                    buyerUserId,
+                    buyerLogonId
+            );
+        } else if (rand < 0.90) {
+            log.info("[{}]条码支付用户支付中(沙箱), 订单号:{}", getChannelCode(), request.getOrderNo());
+            return BarcodePayResponse.paying(request.getOrderNo(), "用户支付中，需要输入密码");
+        } else {
+            log.info("[{}]条码支付失败(沙箱), 订单号:{}", getChannelCode(), request.getOrderNo());
+            return BarcodePayResponse.fail("PAY_FAIL", "付款码已失效，请刷新后重试");
+        }
+    }
+
+    @Override
+    public FacePayResponse facePay(FacePayRequest request) {
+        log.info("[{}]开始刷脸支付, 订单号:{}, 金额:{}",
+                getChannelCode(), request.getOrderNo(), request.getAmount());
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(request);
+
+        try {
+            if (SandboxContext.isSandboxMode()) {
+                FacePayResponse response = SandboxSceneSimulator.simulateFacePay(request,
+                        () -> doBuildFacePayResponse(request));
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        "", requestData, JSON.toJSONString(response),
+                        response.getChannelTradeNo(), (int) (System.currentTimeMillis() - startTime), null);
+                return response;
+            }
+            FacePayResponse response = doBuildFacePayResponse(request);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                    "", requestData, JSON.toJSONString(response),
+                    response.getChannelTradeNo(), (int) (System.currentTimeMillis() - startTime), null);
+            return response;
+        } catch (Exception e) {
+            log.error("[{}]刷脸支付异常", getChannelCode(), e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                    "", requestData, null, null, (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return FacePayResponse.fail("SYSTEM_ERROR", "刷脸支付异常: " + e.getMessage());
+        }
+    }
+
+    private FacePayResponse doBuildFacePayResponse(FacePayRequest request) {
+        String channelTradeNo = generateChannelTradeNo();
+        String openId = "sandbox_openid_" + IdUtil.fastSimpleUUID().substring(0, 16);
+        String buyerUserId = "sandbox_buyer_" + IdUtil.fastSimpleUUID().substring(0, 8);
+        String buyerLogonId = "face***@example.com";
+
+        double rand = Math.random();
+        if (rand < 0.70) {
+            log.info("[{}]刷脸支付成功(沙箱), 订单号:{}, 通道交易号:{}",
+                    getChannelCode(), request.getOrderNo(), channelTradeNo);
+            return FacePayResponse.success(
+                    request.getOrderNo(),
+                    channelTradeNo,
+                    request.getAmount(),
+                    LocalDateTime.now(),
+                    buyerUserId,
+                    buyerLogonId,
+                    openId
+            );
+        } else if (rand < 0.85) {
+            log.info("[{}]刷脸需再次验证(沙箱), 订单号:{}", getChannelCode(), request.getOrderNo());
+            return FacePayResponse.needAuth("face_token_" + IdUtil.fastSimpleUUID(), "请再次刷脸验证");
+        } else if (rand < 0.95) {
+            log.info("[{}]刷脸支付用户确认中(沙箱), 订单号:{}", getChannelCode(), request.getOrderNo());
+            return FacePayResponse.paying(request.getOrderNo(), "请在手机上确认支付");
+        } else {
+            log.info("[{}]刷脸支付失败(沙箱), 订单号:{}", getChannelCode(), request.getOrderNo());
+            return FacePayResponse.fail("FACE_FAIL", "人脸识别未通过，请重试");
+        }
+    }
+
+    private String maskAuthCode(String authCode) {
+        if (StrUtil.isBlank(authCode)) {
+            return "";
+        }
+        if (authCode.length() <= 8) {
+            return authCode.charAt(0) + "****" + authCode.charAt(authCode.length() - 1);
+        }
+        return authCode.substring(0, 4) + "****" + authCode.substring(authCode.length() - 4);
     }
 }

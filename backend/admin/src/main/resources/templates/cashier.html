@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>商户收银台</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+    .card-header {
+      background: linear-gradient(135deg, #1677ff, #0958d9);
+      color: #fff;
+      padding: 28px 24px;
+      text-align: center;
+    }
+    .card-header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .card-header .sub { font-size: 13px; opacity: 0.85; }
+    .merchant-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    .merchant-info .dot {
+      width: 6px; height: 6px;
+      background: #52c41a;
+      border-radius: 50%;
+    }
+    .card-body { padding: 28px 24px; }
+    .amount-section { text-align: center; margin-bottom: 28px; }
+    .amount-label { font-size: 13px; color: #999; margin-bottom: 8px; }
+    .amount-input-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .currency { font-size: 32px; color: #1677ff; font-weight: 600; }
+    .amount-input {
+      font-size: 48px;
+      font-weight: 700;
+      color: #1a1a1a;
+      border: none;
+      outline: none;
+      width: 200px;
+      text-align: center;
+      background: transparent;
+    }
+    .amount-input:focus { border-bottom: 2px solid #1677ff; }
+    .product-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #e8e8e8;
+      border-radius: 10px;
+      font-size: 14px;
+      margin-top: 16px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .product-input:focus { border-color: #1677ff; }
+
+    .pay-tabs {
+      display: flex;
+      background: #f5f6fa;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 20px;
+    }
+    .pay-tab {
+      flex: 1;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 14px;
+      color: #666;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .pay-tab.active {
+      background: #fff;
+      color: #1677ff;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .pay-tab .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+    .channel-options {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .channel-option {
+      padding: 14px 8px;
+      border: 2px solid #e8e8e8;
+      border-radius: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .channel-option:hover { border-color: #91caff; }
+    .channel-option.active {
+      border-color: #1677ff;
+      background: #e6f4ff;
+    }
+    .channel-option .ch-icon { font-size: 24px; display: block; margin-bottom: 4px; }
+    .channel-option .ch-name { font-size: 12px; color: #333; }
+    .channel-option.active .ch-name { color: #1677ff; font-weight: 600; }
+
+    .barcode-section { display: none; }
+    .barcode-section.active { display: block; }
+    .barcode-input-wrapper {
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .barcode-input {
+      width: 100%;
+      padding: 16px 16px 16px 48px;
+      border: 2px solid #e8e8e8;
+      border-radius: 12px;
+      font-size: 16px;
+      letter-spacing: 2px;
+      outline: none;
+      transition: border-color .2s;
+      font-family: "Courier New", monospace;
+    }
+    .barcode-input:focus { border-color: #1677ff; }
+    .barcode-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 22px;
+    }
+    .barcode-hint {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .facepay-section { display: none; text-align: center; }
+    .facepay-section.active { display: block; }
+    .face-area {
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e6f4ff, #f0f5ff);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+      transition: all .3s;
+    }
+    .face-area:hover { transform: scale(1.02); }
+    .face-area.scanning::before {
+      content: '';
+      position: absolute;
+      left: 10%; right: 10%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #1677ff, transparent);
+      border-radius: 2px;
+      animation: scan 2s ease-in-out infinite;
+    }
+    @keyframes scan {
+      0% { top: 15%; }
+      50% { top: 85%; }
+      100% { top: 15%; }
+    }
+    .face-icon { font-size: 72px; }
+    .facepay-hint {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .action-btn.primary {
+      background: linear-gradient(135deg, #1677ff, #0958d9);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+    }
+    .action-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(22, 119, 255, 0.4); }
+    .action-btn.primary:active { transform: translateY(0); }
+    .action-btn.primary:disabled {
+      background: #bfbfbf;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+    .action-btn.secondary {
+      background: #f5f6fa;
+      color: #333;
+      margin-top: 10px;
+    }
+    .action-btn.secondary:hover { background: #e8e8e8; }
+
+    .result-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .result-modal.show { display: flex; }
+    .result-content {
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px 32px;
+      width: 90%;
+      max-width: 360px;
+      text-align: center;
+      animation: popIn .3s ease-out;
+    }
+    @keyframes popIn {
+      from { transform: scale(0.8); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .result-icon {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      margin: 0 auto 20px;
+    }
+    .result-icon.success { background: #f6ffed; color: #52c41a; }
+    .result-icon.paying { background: #e6f4ff; color: #1677ff; }
+    .result-icon.fail { background: #fff1f0; color: #ff4d4f; }
+    .result-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    .result-desc { font-size: 14px; color: #666; margin-bottom: 16px; line-height: 1.6; }
+    .result-amount {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin: 16px 0;
+    }
+    .result-detail {
+      background: #fafafa;
+      border-radius: 10px;
+      padding: 14px;
+      text-align: left;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .result-detail .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .result-detail .label { color: #999; }
+    .result-detail .value { color: #333; }
+
+    .qrcode-section { display: none; text-align: center; }
+    .qrcode-section.active { display: block; }
+    .qrcode-box {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 16px;
+      border: 1px solid #e8e8e8;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+    .qrcode-box img { width: 100%; height: 100%; }
+    .qrcode-hint {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+    .qrcode-actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+    }
+    .qrcode-actions .mini-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      color: #333;
+    }
+    .qrcode-actions .mini-btn:hover { border-color: #1677ff; color: #1677ff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h1>商户收银台</h1>
+        <p class="sub">安全便捷 · 多种支付方式</p>
+        <div class="merchant-info">
+          <span class="dot"></span>
+          <span>商户号：<span th:text="${merchantNo}">-</span></span>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="amount-section">
+          <div class="amount-label">收款金额</div>
+          <div class="amount-input-group">
+            <span class="currency">¥</span>
+            <input type="number" class="amount-input" id="amountInput" placeholder="0.00" step="0.01" min="0.01"/>
+          </div>
+          <input type="text" class="product-input" id="productInput" placeholder="商品描述（选填）" value="商品购买"/>
+        </div>
+
+        <div class="pay-tabs">
+          <div class="pay-tab active" onclick="switchPayMode('barcode')">
+            <span class="icon">📷</span>扫码收款
+          </div>
+          <div class="pay-tab" onclick="switchPayMode('qrcode')">
+            <span class="icon">📱</span>用户扫码
+          </div>
+          <div class="pay-tab" onclick="switchPayMode('facepay')">
+            <span class="icon">😊</span>刷脸支付
+          </div>
+        </div>
+
+        <div class="channel-options" id="channelOptions">
+          <div class="channel-option active" data-channel="WECHAT_PAY" onclick="selectChannel(this)">
+            <span class="ch-icon">💚</span>
+            <span class="ch-name">微信支付</span>
+          </div>
+          <div class="channel-option" data-channel="ALIPAY" onclick="selectChannel(this)">
+            <span class="ch-icon">💙</span>
+            <span class="ch-name">支付宝</span>
+          </div>
+          <div class="channel-option" data-channel="UNION_PAY" onclick="selectChannel(this)">
+            <span class="ch-icon">♥️</span>
+            <span class="ch-name">云闪付</span>
+          </div>
+        </div>
+
+        <div class="barcode-section active" id="barcodeSection">
+          <div class="barcode-input-wrapper">
+            <span class="barcode-icon">⌗</span>
+            <input type="text" class="barcode-input" id="authCodeInput"
+                   placeholder="请扫描或输入付款码" maxlength="32"/>
+          </div>
+          <div class="barcode-hint">请将扫码枪对准用户付款码，或手动输入后按回车</div>
+          <button class="action-btn primary" id="barcodeBtn" onclick="submitBarcodePay()">确认收款</button>
+        </div>
+
+        <div class="qrcode-section" id="qrcodeSection">
+          <div class="qrcode-box">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:13px;">
+              点击生成收款码
+            </div>
+          </div>
+          <div class="qrcode-hint">用户打开微信/支付宝扫描二维码完成支付</div>
+          <button class="action-btn primary" onclick="generateQrCode()">生成收款码</button>
+          <div class="qrcode-actions">
+            <button class="mini-btn" onclick="refreshQrCode()">刷新二维码</button>
+            <button class="mini-btn" onclick="queryQrOrder()">查询订单</button>
+          </div>
+        </div>
+
+        <div class="facepay-section" id="facepaySection">
+          <div class="face-area" id="faceArea" onclick="startFacePay()">
+            <span class="face-icon">😊</span>
+          </div>
+          <div class="facepay-hint">
+            请将面部对准摄像头<br/>
+            点击开始刷脸识别，或输入用户OpenID
+          </div>
+          <input type="text" class="product-input" id="openIdInput" placeholder="用户OpenID（选填）"/>
+          <button class="action-btn primary" id="facepayBtn" onclick="submitFacePay()" style="margin-top:16px;">开始刷脸支付</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="result-modal" id="resultModal">
+    <div class="result-content">
+      <div class="result-icon" id="resultIcon">✓</div>
+      <div class="result-title" id="resultTitle">支付成功</div>
+      <div class="result-desc" id="resultDesc">感谢您的使用</div>
+      <div class="result-amount" id="resultAmount">¥0.00</div>
+      <div class="result-detail" id="resultDetail" style="display:none;"></div>
+      <button class="action-btn primary" onclick="closeModal()">确认</button>
+      <button class="action-btn secondary" id="continueBtn" onclick="resetForm()">继续收款</button>
+    </div>
+  </div>
+
+<script>
+  var merchantNo = /*[[${merchantNo}]]*/ 'M000001';
+  var currentChannel = 'WECHAT_PAY';
+  var currentOrderNo = '';
+  var pollingTimer = null;
+
+  function selectChannel(el) {
+    document.querySelectorAll('.channel-option').forEach(function(opt) {
+      opt.classList.remove('active');
+    });
+    el.classList.add('active');
+    currentChannel = el.getAttribute('data-channel');
+  }
+
+  function switchPayMode(mode) {
+    document.querySelectorAll('.pay-tab').forEach(function(tab, idx) {
+      tab.classList.toggle('active', (mode === 'barcode' && idx === 0) ||
+        (mode === 'qrcode' && idx === 1) || (mode === 'facepay' && idx === 2));
+    });
+    document.getElementById('barcodeSection').classList.toggle('active', mode === 'barcode');
+    document.getElementById('qrcodeSection').classList.toggle('active', mode === 'qrcode');
+    document.getElementById('facepaySection').classList.toggle('active', mode === 'facepay');
+  }
+
+  function getAmount() {
+    var v = parseFloat(document.getElementById('amountInput').value);
+    if (!v || v <= 0) { alert('请输入有效金额'); return null; }
+    return v.toFixed(2);
+  }
+
+  function getProduct() {
+    return document.getElementById('productInput').value || '商品购买';
+  }
+
+  function genOrderNo() {
+    var t = new Date().getTime();
+    var r = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return 'CB' + t + r;
+  }
+
+  function submitBarcodePay() {
+    var amount = getAmount(); if (!amount) return;
+    var authCode = document.getElementById('authCodeInput').value.trim();
+    if (!authCode) { alert('请输入或扫描付款码'); return; }
+
+    var orderNo = genOrderNo();
+    var btn = document.getElementById('barcodeBtn');
+    btn.disabled = true; btn.textContent = '支付处理中...';
+
+    fetch('/api/pay/barcode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantOrderNo: orderNo,
+        payAmount: parseFloat(amount),
+        payChannel: currentChannel,
+        authCode: authCode,
+        productSubject: getProduct(),
+        notifyUrl: 'https://callback.example.com/notify'
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.code === 200 && res.data) {
+        currentOrderNo = res.data.orderNo;
+        handleBarcodeResult(res.data);
+      } else {
+        showResult('fail', '支付失败', res.message || '未知错误', amount);
+      }
+    })
+    .catch(function(e) {
+      showResult('fail', '请求异常', e.message, amount);
+    })
+    .finally(function() {
+      btn.disabled = false; btn.textContent = '确认收款';
+    });
+  }
+
+  function handleBarcodeResult(data) {
+    var amount = data.payAmount || getAmount();
+    if (data.isSuccess || data.payStatus === 1 || 'SUCCESS' === data.payStatus) {
+      showResult('success', '支付成功', '收款已到账', amount, {
+        '订单号': data.orderNo,
+        '交易号': data.channelTradeNo,
+        '付款方': data.buyerLogonId || data.buyerUserId
+      });
+    } else if (data.isPaying || 'PAYING' === data.payStatus || 'PENDING' === data.payStatus) {
+      showResult('paying', '用户支付中', data.subMsg || '用户正在输入密码，请稍后查询订单状态', amount, {
+        '订单号': data.orderNo
+      });
+      startPolling(data.orderNo, 'barcode');
+    } else {
+      showResult('fail', '支付失败', data.subMsg || data.msg || '付款码无效或已过期', amount);
+    }
+  }
+
+  function startFacePay() {
+    var faceArea = document.getElementById('faceArea');
+    faceArea.classList.add('scanning');
+    setTimeout(function() {
+      faceArea.classList.remove('scanning');
+      var mockFaceCode = 'FACE' + Date.now().toString().slice(-8);
+      document.getElementById('openIdInput').value = mockFaceCode;
+    }, 2000);
+  }
+
+  function submitFacePay() {
+    var amount = getAmount(); if (!amount) return;
+    var faceCode = document.getElementById('openIdInput').value.trim();
+
+    var orderNo = genOrderNo();
+    var btn = document.getElementById('facepayBtn');
+    btn.disabled = true; btn.textContent = '识别中...';
+
+    fetch('/api/pay/facepay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantOrderNo: orderNo,
+        payAmount: parseFloat(amount),
+        payChannel: currentChannel,
+        faceCode: faceCode.length >= 8 ? faceCode : '',
+        openId: faceCode,
+        productSubject: getProduct(),
+        notifyUrl: 'https://callback.example.com/notify'
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.code === 200 && res.data) {
+        currentOrderNo = res.data.orderNo;
+        handleFaceResult(res.data, amount);
+      } else {
+        showResult('fail', '识别失败', res.message || '未知错误', amount);
+      }
+    })
+    .catch(function(e) {
+      showResult('fail', '请求异常', e.message, amount);
+    })
+    .finally(function() {
+      btn.disabled = false; btn.textContent = '开始刷脸支付';
+    });
+  }
+
+  function handleFaceResult(data, amount) {
+    if (data.isSuccess || data.payStatus === 1 || 'SUCCESS' === data.payStatus) {
+      showResult('success', '刷脸成功', '支付已完成', amount, {
+        '订单号': data.orderNo,
+        '交易号': data.channelTradeNo,
+        '用户': data.buyerLogonId || data.openId
+      });
+    } else if (data.isNeedAuth || 'NEED_AUTH' === data.payStatus) {
+      showResult('paying', '需要再次验证', data.subMsg || '请再次刷脸确认支付', amount, {
+        '订单号': data.orderNo,
+        'Token': data.faceAuthToken || '-'
+      });
+    } else if (data.isPaying || 'PAYING' === data.payStatus || 'PENDING' === data.payStatus) {
+      showResult('paying', '确认中', data.subMsg || '请在手机上确认支付', amount, {
+        '订单号': data.orderNo
+      });
+      startPolling(data.orderNo, 'facepay');
+    } else {
+      showResult('fail', '支付失败', data.subMsg || data.msg || '人脸识别未通过', amount);
+    }
+  }
+
+  function generateQrCode() {
+    var amount = getAmount(); if (!amount) return;
+    var orderNo = genOrderNo();
+    currentOrderNo = orderNo;
+
+    fetch('/api/pay/aggregate/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantOrderNo: orderNo,
+        payAmount: parseFloat(amount),
+        productSubject: getProduct(),
+        notifyUrl: 'https://callback.example.com/notify'
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.code === 200 && res.data) {
+        currentOrderNo = res.data.orderNo;
+        fetch('/api/pay/aggregate/order/' + res.data.orderNo + '/qrcode?size=200')
+          .then(function(r) { return r.json(); })
+          .then(function(qrRes) {
+            if (qrRes.code === 200 && qrRes.data) {
+              var box = document.querySelector('.qrcode-box');
+              box.innerHTML = '<img src="' + qrRes.data + '" alt="收款码"/>';
+              startPolling(res.data.orderNo, 'qr');
+            }
+          });
+      } else {
+        alert(res.message || '生成二维码失败');
+      }
+    })
+    .catch(function(e) { alert('生成失败: ' + e.message); });
+  }
+
+  function refreshQrCode() { generateQrCode(); }
+
+  function queryQrOrder() {
+    if (!currentOrderNo) { alert('暂无订单'); return; }
+    fetch('/api/pay/aggregate/order/' + currentOrderNo)
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.code === 200 && res.data) {
+          var d = res.data;
+          if (d.payStatus === 1 || 'SUCCESS' === d.payStatus) {
+            stopPolling();
+            showResult('success', '支付成功', '用户已完成支付', d.payAmount, {
+              '订单号': d.orderNo,
+              '支付渠道': d.payChannel
+            });
+          } else if (d.payStatus === 0 || 'PENDING' === d.payStatus) {
+            alert('等待用户支付中...');
+          } else {
+            alert('订单状态: ' + (d.payStatusDesc || d.payStatus));
+          }
+        }
+      });
+  }
+
+  function startPolling(orderNo, type) {
+    stopPolling();
+    var count = 0;
+    var maxCount = 30;
+    var url = type === 'qr' ? '/api/pay/aggregate/order/' + orderNo :
+              (type === 'barcode' ? '/api/pay/barcode/retry/' + orderNo :
+                                     '/api/pay/facepay/retry/' + orderNo);
+    pollingTimer = setInterval(function() {
+      count++;
+      if (count > maxCount) { stopPolling(); return; }
+      fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.code === 200 && res.data) {
+            var d = res.data;
+            if (d.isSuccess || d.payStatus === 1 || 'SUCCESS' === d.payStatus) {
+              stopPolling();
+              showResult('success', '支付成功', '收款已到账', d.payAmount, {
+                '订单号': d.orderNo,
+                '交易号': d.channelTradeNo
+              });
+            } else if (d.payStatus === 2 || 'FAIL' === d.payStatus || d.code === 'PAY_FAIL') {
+              stopPolling();
+              showResult('fail', '支付失败', d.subMsg || d.msg || '用户取消支付', d.payAmount);
+            }
+          }
+        })
+        .catch(function() {});
+    }, 2000);
+  }
+
+  function stopPolling() {
+    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+  }
+
+  function showResult(type, title, desc, amount, detail) {
+    stopPolling();
+    var modal = document.getElementById('resultModal');
+    var icon = document.getElementById('resultIcon');
+    icon.className = 'result-icon ' + type;
+    icon.textContent = type === 'success' ? '✓' : (type === 'paying' ? '⏳' : '✕');
+    document.getElementById('resultTitle').textContent = title;
+    document.getElementById('resultTitle').style.color =
+      type === 'success' ? '#52c41a' : (type === 'paying' ? '#1677ff' : '#ff4d4f');
+    document.getElementById('resultDesc').textContent = desc;
+    document.getElementById('resultAmount').textContent = '¥' + amount;
+    var detailBox = document.getElementById('resultDetail');
+    if (detail) {
+      var html = '';
+      Object.keys(detail).forEach(function(k) {
+        if (detail[k]) {
+          html += '<div class="row"><span class="label">' + k + '</span><span class="value">' + detail[k] + '</span></div>';
+        }
+      });
+      detailBox.innerHTML = html;
+      detailBox.style.display = 'block';
+    } else {
+      detailBox.style.display = 'none';
+    }
+    modal.classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('resultModal').classList.remove('show');
+  }
+
+  function resetForm() {
+    closeModal();
+    stopPolling();
+    document.getElementById('amountInput').value = '';
+    document.getElementById('authCodeInput').value = '';
+    document.getElementById('openIdInput').value = '';
+    currentOrderNo = '';
+    var box = document.querySelector('.qrcode-box');
+    if (box) box.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:13px;">点击生成收款码</div>';
+    setTimeout(function() { document.getElementById('amountInput').focus(); }, 100);
+  }
+
+  document.getElementById('authCodeInput').addEventListener('keydown', function(e) {
+    if (e.keyCode === 13) submitBarcodePay();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  setTimeout(function() { document.getElementById('amountInput').focus(); }, 100);
+</script>
+</body>
+</html>

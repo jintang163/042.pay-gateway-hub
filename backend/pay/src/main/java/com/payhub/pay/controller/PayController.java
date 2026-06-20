@@ -2,10 +2,7 @@ package com.payhub.pay.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.payhub.common.result.Result;
-import com.payhub.pay.dto.OrderQueryRequest;
-import com.payhub.pay.dto.OrderQueryResponse;
-import com.payhub.pay.dto.UnifiedOrderRequest;
-import com.payhub.pay.dto.UnifiedOrderResponse;
+import com.payhub.pay.dto.*;
 import com.payhub.pay.dto.vo.ChannelDistributionVO;
 import com.payhub.pay.dto.vo.OrderAttributionVO;
 import com.payhub.pay.dto.vo.OverviewStatsVO;
@@ -47,6 +44,96 @@ public class PayController {
             request.setMerchantNo(merchantNo);
         }
         UnifiedOrderResponse response = payOrderService.unifiedOrder(request);
+        return Result.success(response);
+    }
+
+    @PostMapping("/barcode")
+    public Result<BarcodePayResponse> barcodePay(@Valid @RequestBody BarcodePayRequest request,
+                                                 HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        if (merchantNo != null) {
+            request.setMerchantNo(merchantNo);
+        }
+        String clientIp = getClientIp(httpRequest);
+        if (clientIp != null && request.getClientIp() == null) {
+            request.setClientIp(clientIp);
+        }
+        BarcodePayResponse response = payOrderService.barcodePay(request);
+        return Result.success(response);
+    }
+
+    @PostMapping("/facepay")
+    public Result<FacePayResponse> facePay(@Valid @RequestBody FacePayRequest request,
+                                           HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        if (merchantNo != null) {
+            request.setMerchantNo(merchantNo);
+        }
+        String clientIp = getClientIp(httpRequest);
+        if (clientIp != null && request.getClientIp() == null) {
+            request.setClientIp(clientIp);
+        }
+        FacePayResponse response = payOrderService.facePay(request);
+        return Result.success(response);
+    }
+
+    @GetMapping("/barcode/retry/{orderNo}")
+    public Result<BarcodePayResponse> barcodeRetry(@PathVariable String orderNo,
+                                                    HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        PayOrder order = payOrderService.getOrderDetail(orderNo, merchantNo);
+        OrderQueryRequest queryRequest = new OrderQueryRequest();
+        queryRequest.setOrderNo(orderNo);
+        queryRequest.setMerchantNo(merchantNo);
+        OrderQueryResponse queryResponse = payOrderService.queryOrder(queryRequest);
+        BarcodePayResponse response = BarcodePayResponse.builder()
+                .orderNo(order.getOrderNo())
+                .merchantOrderNo(order.getMerchantOrderNo())
+                .payStatus(queryResponse.getPayStatus())
+                .payAmount(queryResponse.getPayAmount())
+                .payTime(queryResponse.getPayTime())
+                .channelTradeNo(queryResponse.getChannelTradeNo())
+                .build();
+        if ("SUCCESS".equalsIgnoreCase(queryResponse.getPayStatus())) {
+            response.setCode("10000");
+            response.setMsg("Success");
+        } else if ("PENDING".equalsIgnoreCase(queryResponse.getPayStatus())) {
+            response.setPayStatus("PAYING");
+            response.setSubMsg("用户支付中，请继续等待");
+        } else {
+            response.setCode("PAY_FAIL");
+            response.setMsg("支付失败");
+        }
+        return Result.success(response);
+    }
+
+    @GetMapping("/facepay/retry/{orderNo}")
+    public Result<FacePayResponse> facePayRetry(@PathVariable String orderNo,
+                                                 HttpServletRequest httpRequest) {
+        String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
+        PayOrder order = payOrderService.getOrderDetail(orderNo, merchantNo);
+        OrderQueryRequest queryRequest = new OrderQueryRequest();
+        queryRequest.setOrderNo(orderNo);
+        queryRequest.setMerchantNo(merchantNo);
+        OrderQueryResponse queryResponse = payOrderService.queryOrder(queryRequest);
+        FacePayResponse response = FacePayResponse.builder()
+                .orderNo(order.getOrderNo())
+                .merchantOrderNo(order.getMerchantOrderNo())
+                .payStatus(queryResponse.getPayStatus())
+                .payAmount(queryResponse.getPayAmount())
+                .payTime(queryResponse.getPayTime())
+                .channelTradeNo(queryResponse.getChannelTradeNo())
+                .build();
+        if ("SUCCESS".equalsIgnoreCase(queryResponse.getPayStatus())) {
+            response.setCode("10000");
+            response.setMsg("Success");
+        } else if ("PENDING".equalsIgnoreCase(queryResponse.getPayStatus())) {
+            response.setPayStatus("PAYING");
+            response.setSubMsg("用户确认中，请继续等待");
+        } else {
+            response.setCode("PAY_FAIL");
+            response.setMsg("支付失败");
+        }
         return Result.success(response);
     }
 
@@ -149,5 +236,28 @@ public class PayController {
         String merchantNo = (String) httpRequest.getAttribute("currentMerchantNo");
         List<PayOrder> orders = dashboardService.getRecentOrders(merchantNo, limit);
         return Result.success(orders);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return "0:0:0:0:0:0:0:1".equals(ip) ? "127.0.0.1" : ip;
     }
 }

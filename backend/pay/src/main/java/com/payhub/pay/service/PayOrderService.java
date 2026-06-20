@@ -2,10 +2,7 @@ package com.payhub.pay.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.payhub.pay.dto.OrderQueryRequest;
-import com.payhub.pay.dto.OrderQueryResponse;
-import com.payhub.pay.dto.UnifiedOrderRequest;
-import com.payhub.pay.dto.UnifiedOrderResponse;
+import com.payhub.pay.dto.*;
 import com.payhub.pay.entity.PayOrder;
 
 import java.util.Map;
@@ -13,6 +10,10 @@ import java.util.Map;
 public interface PayOrderService extends IService<PayOrder> {
 
     UnifiedOrderResponse unifiedOrder(UnifiedOrderRequest request);
+
+    BarcodePayResponse barcodePay(BarcodePayRequest request);
+
+    FacePayResponse facePay(FacePayRequest request);
 
     OrderQueryResponse queryOrder(OrderQueryRequest request);
 

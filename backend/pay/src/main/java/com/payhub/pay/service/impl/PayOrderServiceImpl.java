@@ -331,6 +331,499 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BarcodePayResponse barcodePay(BarcodePayRequest request) {
+        log.info("开始条码支付(被扫), merchantNo={}, merchantOrderNo={}, channel={}, amount={}",
+                request.getMerchantNo(), request.getMerchantOrderNo(), request.getPayChannel(), request.getPayAmount());
+
+        LambdaQueryWrapper<PayOrder> orderWrapper = new LambdaQueryWrapper<>();
+        orderWrapper.eq(PayOrder::getMerchantNo, request.getMerchantNo())
+                .eq(PayOrder::getMerchantOrderNo, request.getMerchantOrderNo())
+                .last("LIMIT 1");
+        PayOrder existOrder = this.getOne(orderWrapper);
+        if (existOrder != null && PayStatusEnum.SUCCESS.getCode().equals(existOrder.getPayStatus())) {
+            return BarcodePayResponse.builder()
+                    .orderNo(existOrder.getOrderNo())
+                    .merchantOrderNo(existOrder.getMerchantOrderNo())
+                    .payStatus(existOrder.getPayStatus())
+                    .payAmount(existOrder.getPayAmount())
+                    .payTime(existOrder.getPayTime())
+                    .channelTradeNo(existOrder.getChannelTradeNo())
+                    .code("10000")
+                    .msg("Success")
+                    .build();
+        }
+
+        MerchantPayConfig config = payRouterService.selectChannel(
+                request.getMerchantNo(),
+                request.getPayChannel(),
+                "BARCODE",
+                request.getPayAmount(),
+                request.getClientIp()
+        );
+        if (config == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "未找到可用的支付通道配置");
+        }
+
+        String orderNo = existOrder != null ? existOrder.getOrderNo() : OrderNoGenerator.generate();
+        BigDecimal couponDiscount = BigDecimal.ZERO;
+        BigDecimal activityDiscount = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        if (marketingDiscountService != null) {
+            if (StrUtil.isNotBlank(request.getCouponCode())) {
+                try {
+                    CouponDiscountCalcResult couponResult = marketingDiscountService.calcCouponDiscount(
+                            request.getCouponCode(), request.getMerchantNo(), request.getPayAmount());
+                    couponDiscount = couponResult.getDiscountAmount();
+                } catch (Exception e) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "优惠券不可用: " + e.getMessage());
+                }
+            }
+            if (StrUtil.isNotBlank(request.getActivityCode())) {
+                try {
+                    activityDiscount = marketingDiscountService.calcActivityDiscount(
+                            request.getActivityCode(), request.getMerchantNo(), request.getPayAmount());
+                } catch (Exception e) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "活动不可用: " + e.getMessage());
+                }
+            }
+        }
+
+        discountAmount = couponDiscount.add(activityDiscount);
+        if (discountAmount.compareTo(request.getPayAmount()) > 0) {
+            discountAmount = request.getPayAmount();
+        }
+        BigDecimal payableAmount = request.getPayAmount().subtract(discountAmount);
+        if (payableAmount.compareTo(BigDecimal.ZERO) < 0) {
+            payableAmount = BigDecimal.ZERO;
+        }
+
+        BigDecimal feeAmount;
+        if (feeRuleService != null) {
+            try {
+                FeeCalcRequest calcRequest = new FeeCalcRequest();
+                calcRequest.setMerchantNo(request.getMerchantNo());
+                calcRequest.setPayChannel(config.getPayChannel());
+                calcRequest.setAmount(payableAmount);
+                FeeCalcResult calcResult = feeRuleService.calculate(calcRequest);
+                feeAmount = calcResult.getFeeAmount();
+            } catch (Exception e) {
+                feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+            }
+        } else {
+            feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+        }
+
+        BigDecimal actualAmount = payableAmount.subtract(feeAmount);
+
+        PayOrder order;
+        if (existOrder == null) {
+            order = new PayOrder();
+            order.setOrderNo(orderNo);
+            order.setMerchantNo(request.getMerchantNo());
+            order.setMerchantOrderNo(request.getMerchantOrderNo());
+            order.setCouponCode(request.getCouponCode());
+            order.setActivityCode(request.getActivityCode());
+            order.setPayAmount(request.getPayAmount());
+            order.setCouponDiscount(couponDiscount);
+            order.setActivityDiscount(activityDiscount);
+            order.setActualAmount(actualAmount);
+            order.setFeeAmount(feeAmount);
+            order.setPayChannel(config.getChannelCode());
+            order.setPayType("BARCODE");
+            order.setProductSubject(request.getProductSubject());
+            order.setProductDetail(request.getProductDetail());
+            order.setNotifyUrl(request.getNotifyUrl());
+            order.setClientIp(request.getClientIp());
+            order.setExtraParams(request.getExtraParams());
+            order.setPayStatus(PayStatusEnum.PENDING.getCode());
+            order.setExpireTime(LocalDateTime.now().plusMinutes(30));
+            this.save(order);
+            log.info("条码支付订单创建成功: orderNo={}, merchantNo={}, amount={}", orderNo, request.getMerchantNo(), request.getPayAmount());
+        } else {
+            order = existOrder;
+        }
+
+        if (riskControlService != null) {
+            try {
+                RiskCheckRequest riskRequest = RiskCheckRequest.builder()
+                        .merchantNo(request.getMerchantNo())
+                        .orderNo(orderNo)
+                        .clientIp(request.getClientIp())
+                        .payAmount(request.getPayAmount())
+                        .payChannel(config.getPayChannel())
+                        .payType("BARCODE")
+                        .build();
+                RiskCheckResult riskResult = riskControlService.checkRisk(riskRequest);
+                if (riskResult != null && !riskResult.isPass()) {
+                    String riskMsg = riskResult.getSuggestion() != null
+                            ? riskResult.getSuggestion() : "风控拦截: 高风险交易";
+                    order.setPayStatus(PayStatusEnum.FAIL.getCode());
+                    this.updateById(order);
+                    throw new BusinessException(ResultCode.RISK_BLOCKED, riskMsg);
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("风控检查异常，默认放行: orderNo={}, error={}", orderNo, e.getMessage());
+            }
+        }
+
+        com.payhub.channel.dto.BarcodePayRequest channelRequest = new com.payhub.channel.dto.BarcodePayRequest();
+        channelRequest.setMerchantNo(order.getMerchantNo());
+        channelRequest.setOrderNo(order.getOrderNo());
+        channelRequest.setAmount(payableAmount);
+        channelRequest.setSubject(order.getProductSubject());
+        channelRequest.setDetail(order.getProductDetail());
+        channelRequest.setClientIp(order.getClientIp());
+        channelRequest.setAuthCode(request.getAuthCode());
+        channelRequest.setScene(request.getScene());
+        channelRequest.setNotifyUrl(buildChannelNotifyUrl(config.getChannelCode()));
+
+        PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(config.getChannelCode());
+        long start = System.currentTimeMillis();
+        com.payhub.channel.dto.BarcodePayResponse channelResponse = null;
+        String errorMsg = null;
+        try {
+            channelResponse = strategy.barcodePay(channelRequest);
+        } catch (Exception e) {
+            errorMsg = e.getMessage();
+            log.error("条码支付通道调用异常, orderNo={}, channel={}, error={}", orderNo, config.getChannelCode(), e.getMessage(), e);
+        } finally {
+            int costTime = (int) (System.currentTimeMillis() - start);
+            if (strategy instanceof AbstractPayChannel) {
+                ((AbstractPayChannel) strategy).saveChannelLog(
+                        request.getMerchantNo(), orderNo, "barcodePay",
+                        "", JSON.toJSONString(channelRequest),
+                        channelResponse != null ? JSON.toJSONString(channelResponse) : "",
+                        channelResponse != null ? channelResponse.getChannelTradeNo() : "",
+                        costTime, errorMsg
+                );
+            }
+        }
+
+        if (channelResponse == null) {
+            String finalError = errorMsg != null ? errorMsg : "通道调用失败";
+            order.setPayStatus(PayStatusEnum.FAIL.getCode());
+            this.updateById(order);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "条码支付失败: " + finalError);
+        }
+
+        BarcodePayResponse.BarcodePayResponseBuilder responseBuilder = BarcodePayResponse.builder()
+                .orderNo(orderNo)
+                .merchantOrderNo(request.getMerchantOrderNo())
+                .code(channelResponse.getCode())
+                .msg(channelResponse.getMsg())
+                .subCode(channelResponse.getSubCode())
+                .subMsg(channelResponse.getSubMsg());
+
+        if (channelResponse.isSuccess()) {
+            order.setPayStatus(PayStatusEnum.SUCCESS.getCode());
+            order.setPayTime(channelResponse.getPayTime() != null ? channelResponse.getPayTime() : LocalDateTime.now());
+            order.setChannelTradeNo(channelResponse.getChannelTradeNo());
+            order.setUserIdentity(channelResponse.getBuyerUserId());
+            this.updateById(order);
+            log.info("条码支付成功: orderNo={}, channelTradeNo={}", orderNo, channelResponse.getChannelTradeNo());
+
+            responseBuilder.payStatus(PayStatusEnum.SUCCESS.getCode())
+                    .payAmount(order.getPayAmount())
+                    .payTime(order.getPayTime())
+                    .channelTradeNo(channelResponse.getChannelTradeNo())
+                    .buyerUserId(channelResponse.getBuyerUserId())
+                    .buyerLogonId(channelResponse.getBuyerLogonId());
+
+            notifyMerchantAsync(order);
+
+            if (agentProfitService != null) {
+                try {
+                    agentProfitService.calculateProfit(order.getOrderNo(), order.getMerchantNo(),
+                            order.getPayAmount(), order.getFeeAmount() != null ? order.getFeeAmount() : BigDecimal.ZERO);
+                } catch (Exception e) {
+                    log.error("代理分润计算触发失败, orderNo={}", orderNo, e);
+                }
+            }
+
+            if (marketingDiscountService != null) {
+                if (StrUtil.isNotBlank(order.getCouponCode())) {
+                    try {
+                        marketingDiscountService.recordCouponUse(
+                                order.getOrderNo(), order.getMerchantNo(), order.getCouponCode(),
+                                order.getPayAmount(), order.getCouponDiscount(), order.getUserIdentity()
+                        );
+                    } catch (Exception e) {
+                        log.error("条码支付-优惠券核销失败, orderNo={}, couponCode={}", orderNo, order.getCouponCode(), e);
+                    }
+                }
+            }
+
+            simulateAsyncNotifyAfterDelay(order);
+        } else if (channelResponse.isPaying()) {
+            responseBuilder.payStatus("PAYING")
+                    .retryUrl("/api/pay/barcode/retry/" + orderNo);
+            log.info("条码支付用户支付中, orderNo={}", orderNo);
+        } else {
+            order.setPayStatus(PayStatusEnum.FAIL.getCode());
+            this.updateById(order);
+            responseBuilder.payStatus(PayStatusEnum.FAIL.getCode());
+            log.warn("条码支付失败: orderNo={}, code={}, msg={}", orderNo, channelResponse.getCode(), channelResponse.getMsg());
+        }
+
+        return responseBuilder.build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FacePayResponse facePay(FacePayRequest request) {
+        log.info("开始刷脸支付, merchantNo={}, merchantOrderNo={}, channel={}, amount={}",
+                request.getMerchantNo(), request.getMerchantOrderNo(), request.getPayChannel(), request.getPayAmount());
+
+        LambdaQueryWrapper<PayOrder> orderWrapper = new LambdaQueryWrapper<>();
+        orderWrapper.eq(PayOrder::getMerchantNo, request.getMerchantNo())
+                .eq(PayOrder::getMerchantOrderNo, request.getMerchantOrderNo())
+                .last("LIMIT 1");
+        PayOrder existOrder = this.getOne(orderWrapper);
+        if (existOrder != null && PayStatusEnum.SUCCESS.getCode().equals(existOrder.getPayStatus())) {
+            return FacePayResponse.builder()
+                    .orderNo(existOrder.getOrderNo())
+                    .merchantOrderNo(existOrder.getMerchantOrderNo())
+                    .payStatus(existOrder.getPayStatus())
+                    .payAmount(existOrder.getPayAmount())
+                    .payTime(existOrder.getPayTime())
+                    .channelTradeNo(existOrder.getChannelTradeNo())
+                    .code("10000")
+                    .msg("Success")
+                    .build();
+        }
+
+        MerchantPayConfig config = payRouterService.selectChannel(
+                request.getMerchantNo(),
+                request.getPayChannel(),
+                "FACEPAY",
+                request.getPayAmount(),
+                request.getClientIp()
+        );
+        if (config == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "未找到可用的支付通道配置");
+        }
+
+        String orderNo = existOrder != null ? existOrder.getOrderNo() : OrderNoGenerator.generate();
+        BigDecimal couponDiscount = BigDecimal.ZERO;
+        BigDecimal activityDiscount = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        if (marketingDiscountService != null) {
+            if (StrUtil.isNotBlank(request.getCouponCode())) {
+                try {
+                    CouponDiscountCalcResult couponResult = marketingDiscountService.calcCouponDiscount(
+                            request.getCouponCode(), request.getMerchantNo(), request.getPayAmount());
+                    couponDiscount = couponResult.getDiscountAmount();
+                } catch (Exception e) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "优惠券不可用: " + e.getMessage());
+                }
+            }
+            if (StrUtil.isNotBlank(request.getActivityCode())) {
+                try {
+                    activityDiscount = marketingDiscountService.calcActivityDiscount(
+                            request.getActivityCode(), request.getMerchantNo(), request.getPayAmount());
+                } catch (Exception e) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR, "活动不可用: " + e.getMessage());
+                }
+            }
+        }
+
+        discountAmount = couponDiscount.add(activityDiscount);
+        if (discountAmount.compareTo(request.getPayAmount()) > 0) {
+            discountAmount = request.getPayAmount();
+        }
+        BigDecimal payableAmount = request.getPayAmount().subtract(discountAmount);
+        if (payableAmount.compareTo(BigDecimal.ZERO) < 0) {
+            payableAmount = BigDecimal.ZERO;
+        }
+
+        BigDecimal feeAmount;
+        if (feeRuleService != null) {
+            try {
+                FeeCalcRequest calcRequest = new FeeCalcRequest();
+                calcRequest.setMerchantNo(request.getMerchantNo());
+                calcRequest.setPayChannel(config.getPayChannel());
+                calcRequest.setAmount(payableAmount);
+                FeeCalcResult calcResult = feeRuleService.calculate(calcRequest);
+                feeAmount = calcResult.getFeeAmount();
+            } catch (Exception e) {
+                feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+            }
+        } else {
+            feeAmount = calculateFee(payableAmount, config.getFeeRate(), config.getMinFee(), config.getMaxFee());
+        }
+
+        BigDecimal actualAmount = payableAmount.subtract(feeAmount);
+
+        PayOrder order;
+        if (existOrder == null) {
+            order = new PayOrder();
+            order.setOrderNo(orderNo);
+            order.setMerchantNo(request.getMerchantNo());
+            order.setMerchantOrderNo(request.getMerchantOrderNo());
+            order.setCouponCode(request.getCouponCode());
+            order.setActivityCode(request.getActivityCode());
+            order.setPayAmount(request.getPayAmount());
+            order.setCouponDiscount(couponDiscount);
+            order.setActivityDiscount(activityDiscount);
+            order.setActualAmount(actualAmount);
+            order.setFeeAmount(feeAmount);
+            order.setPayChannel(config.getChannelCode());
+            order.setPayType("FACEPAY");
+            order.setUserIdentity(request.getOpenId());
+            order.setProductSubject(request.getProductSubject());
+            order.setProductDetail(request.getProductDetail());
+            order.setNotifyUrl(request.getNotifyUrl());
+            order.setClientIp(request.getClientIp());
+            order.setExtraParams(request.getExtraParams());
+            order.setPayStatus(PayStatusEnum.PENDING.getCode());
+            order.setExpireTime(LocalDateTime.now().plusMinutes(30));
+            this.save(order);
+            log.info("刷脸支付订单创建成功: orderNo={}, merchantNo={}, amount={}", orderNo, request.getMerchantNo(), request.getPayAmount());
+        } else {
+            order = existOrder;
+        }
+
+        if (riskControlService != null) {
+            try {
+                RiskCheckRequest riskRequest = RiskCheckRequest.builder()
+                        .merchantNo(request.getMerchantNo())
+                        .orderNo(orderNo)
+                        .clientIp(request.getClientIp())
+                        .userIdentity(request.getOpenId())
+                        .payAmount(request.getPayAmount())
+                        .payChannel(config.getPayChannel())
+                        .payType("FACEPAY")
+                        .build();
+                RiskCheckResult riskResult = riskControlService.checkRisk(riskRequest);
+                if (riskResult != null && !riskResult.isPass()) {
+                    String riskMsg = riskResult.getSuggestion() != null
+                            ? riskResult.getSuggestion() : "风控拦截: 高风险交易";
+                    order.setPayStatus(PayStatusEnum.FAIL.getCode());
+                    this.updateById(order);
+                    throw new BusinessException(ResultCode.RISK_BLOCKED, riskMsg);
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("风控检查异常，默认放行: orderNo={}, error={}", orderNo, e.getMessage());
+            }
+        }
+
+        com.payhub.channel.dto.FacePayRequest channelRequest = new com.payhub.channel.dto.FacePayRequest();
+        channelRequest.setMerchantNo(order.getMerchantNo());
+        channelRequest.setOrderNo(order.getOrderNo());
+        channelRequest.setAmount(payableAmount);
+        channelRequest.setSubject(order.getProductSubject());
+        channelRequest.setDetail(order.getProductDetail());
+        channelRequest.setClientIp(order.getClientIp());
+        channelRequest.setFaceCode(request.getFaceCode());
+        channelRequest.setOpenId(request.getOpenId());
+        channelRequest.setSceneInfo(request.getSceneInfo());
+        channelRequest.setNotifyUrl(buildChannelNotifyUrl(config.getChannelCode()));
+
+        PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(config.getChannelCode());
+        long start = System.currentTimeMillis();
+        com.payhub.channel.dto.FacePayResponse channelResponse = null;
+        String errorMsg = null;
+        try {
+            channelResponse = strategy.facePay(channelRequest);
+        } catch (Exception e) {
+            errorMsg = e.getMessage();
+            log.error("刷脸支付通道调用异常, orderNo={}, channel={}, error={}", orderNo, config.getChannelCode(), e.getMessage(), e);
+        } finally {
+            int costTime = (int) (System.currentTimeMillis() - start);
+            if (strategy instanceof AbstractPayChannel) {
+                ((AbstractPayChannel) strategy).saveChannelLog(
+                        request.getMerchantNo(), orderNo, "facePay",
+                        "", JSON.toJSONString(channelRequest),
+                        channelResponse != null ? JSON.toJSONString(channelResponse) : "",
+                        channelResponse != null ? channelResponse.getChannelTradeNo() : "",
+                        costTime, errorMsg
+                );
+            }
+        }
+
+        if (channelResponse == null) {
+            String finalError = errorMsg != null ? errorMsg : "通道调用失败";
+            order.setPayStatus(PayStatusEnum.FAIL.getCode());
+            this.updateById(order);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "刷脸支付失败: " + finalError);
+        }
+
+        FacePayResponse.FacePayResponseBuilder responseBuilder = FacePayResponse.builder()
+                .orderNo(orderNo)
+                .merchantOrderNo(request.getMerchantOrderNo())
+                .code(channelResponse.getCode())
+                .msg(channelResponse.getMsg())
+                .subCode(channelResponse.getSubCode())
+                .subMsg(channelResponse.getSubMsg())
+                .faceAuthToken(channelResponse.getFaceAuthToken());
+
+        if (channelResponse.isSuccess()) {
+            order.setPayStatus(PayStatusEnum.SUCCESS.getCode());
+            order.setPayTime(channelResponse.getPayTime() != null ? channelResponse.getPayTime() : LocalDateTime.now());
+            order.setChannelTradeNo(channelResponse.getChannelTradeNo());
+            order.setUserIdentity(StrUtil.isNotBlank(channelResponse.getOpenId()) ? channelResponse.getOpenId() : channelResponse.getBuyerUserId());
+            this.updateById(order);
+            log.info("刷脸支付成功: orderNo={}, channelTradeNo={}", orderNo, channelResponse.getChannelTradeNo());
+
+            responseBuilder.payStatus(PayStatusEnum.SUCCESS.getCode())
+                    .payAmount(order.getPayAmount())
+                    .payTime(order.getPayTime())
+                    .channelTradeNo(channelResponse.getChannelTradeNo())
+                    .buyerUserId(channelResponse.getBuyerUserId())
+                    .buyerLogonId(channelResponse.getBuyerLogonId())
+                    .openId(channelResponse.getOpenId());
+
+            notifyMerchantAsync(order);
+
+            if (agentProfitService != null) {
+                try {
+                    agentProfitService.calculateProfit(order.getOrderNo(), order.getMerchantNo(),
+                            order.getPayAmount(), order.getFeeAmount() != null ? order.getFeeAmount() : BigDecimal.ZERO);
+                } catch (Exception e) {
+                    log.error("代理分润计算触发失败, orderNo={}", orderNo, e);
+                }
+            }
+
+            if (marketingDiscountService != null) {
+                if (StrUtil.isNotBlank(order.getCouponCode())) {
+                    try {
+                        marketingDiscountService.recordCouponUse(
+                                order.getOrderNo(), order.getMerchantNo(), order.getCouponCode(),
+                                order.getPayAmount(), order.getCouponDiscount(), order.getUserIdentity()
+                        );
+                    } catch (Exception e) {
+                        log.error("刷脸支付-优惠券核销失败, orderNo={}, couponCode={}", orderNo, order.getCouponCode(), e);
+                    }
+                }
+            }
+
+            simulateAsyncNotifyAfterDelay(order);
+        } else if (channelResponse.isPaying()) {
+            responseBuilder.payStatus("PAYING")
+                    .retryUrl("/api/pay/facepay/retry/" + orderNo);
+            log.info("刷脸支付用户确认中, orderNo={}", orderNo);
+        } else if (channelResponse.isNeedAuth()) {
+            responseBuilder.payStatus("NEED_AUTH")
+                    .retryUrl("/api/pay/facepay/retry/" + orderNo);
+            log.info("刷脸支付需要再次验证, orderNo={}", orderNo);
+        } else {
+            order.setPayStatus(PayStatusEnum.FAIL.getCode());
+            this.updateById(order);
+            responseBuilder.payStatus(PayStatusEnum.FAIL.getCode());
+            log.warn("刷脸支付失败: orderNo={}, code={}, msg={}", orderNo, channelResponse.getCode(), channelResponse.getMsg());
+        }
+
+        return responseBuilder.build();
+    }
+
+    @Override
     public OrderQueryResponse queryOrder(OrderQueryRequest request) {
         LambdaQueryWrapper<PayOrder> wrapper = new LambdaQueryWrapper<>();
         if (StrUtil.isNotBlank(request.getOrderNo())) {

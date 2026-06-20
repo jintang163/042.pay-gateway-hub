@@ -487,4 +487,193 @@ public class WechatPayChannel extends AbstractPayChannel {
         }
         return result;
     }
+
+    @Override
+    public BarcodePayResponse barcodePay(BarcodePayRequest request) {
+        log.info("[微信支付]开始条码支付(被扫), 订单号:{}, 金额:{}", request.getOrderNo(), request.getAmount());
+
+        ChannelProperties.WechatProperties config = channelProperties.getWechat();
+        String appId = StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : config.getAppId();
+        String mchId = StrUtil.isNotBlank(request.getChannelMerchantId()) ? request.getChannelMerchantId() : config.getMchId();
+        String apiKey = StrUtil.isNotBlank(request.getChannelSecretKey()) ? request.getChannelSecretKey() : config.getApiKey();
+
+        Map<String, String> params = new TreeMap<>();
+        params.put("appid", appId);
+        params.put("mch_id", mchId);
+        params.put("nonce_str", IdUtil.fastSimpleUUID());
+        params.put("body", request.getSubject());
+        params.put("out_trade_no", request.getOrderNo());
+        params.put("total_fee", request.getAmount().multiply(new BigDecimal("100")).intValue() + "");
+        params.put("spbill_create_ip", StrUtil.isNotBlank(request.getClientIp()) ? request.getClientIp() : "127.0.0.1");
+        params.put("auth_code", request.getAuthCode());
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(params);
+        String gatewayUrl = config.getGatewayUrl() + "/pay/micropay";
+
+        try {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
+                return super.barcodePay(request);
+            }
+
+            params.put("sign", SignUtil.wechatSign(params, apiKey));
+            String xmlParams = mapToXml(params);
+            String result = HttpUtil.postXml(gatewayUrl, xmlParams);
+            Map<String, String> resultMap = xmlToMap(result);
+
+            if (!SUCCESS_CODE.equals(resultMap.get("return_code"))) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), resultMap.get("return_msg"));
+                return BarcodePayResponse.fail(FAIL_CODE, resultMap.getOrDefault("return_msg", "微信条码支付失败"));
+            }
+
+            String errCode = resultMap.get("err_code");
+            if ("USERPAYING".equalsIgnoreCase(errCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "用户支付中");
+                return BarcodePayResponse.paying(request.getOrderNo(), "用户支付中，需要输入密码");
+            }
+
+            if (!SUCCESS_CODE.equals(resultMap.get("result_code"))) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), resultMap.get("err_code_des"));
+                return BarcodePayResponse.fail(errCode, resultMap.getOrDefault("err_code_des", "微信条码支付失败"));
+            }
+
+            String transactionId = resultMap.get("transaction_id");
+            BigDecimal amount = new BigDecimal(resultMap.getOrDefault("total_fee", "0"))
+                    .divide(new BigDecimal("100"), 2, BigDecimal.ROUND_HALF_UP);
+            String timeEnd = resultMap.get("time_end");
+            LocalDateTime payTime = null;
+            if (StrUtil.isNotBlank(timeEnd)) {
+                payTime = LocalDateTime.parse(timeEnd, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            }
+
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                    gatewayUrl, requestData, result, transactionId,
+                    (int) (System.currentTimeMillis() - startTime), null);
+            return BarcodePayResponse.success(
+                    request.getOrderNo(),
+                    transactionId,
+                    amount,
+                    payTime,
+                    resultMap.get("openid"),
+                    maskLogonId(resultMap.get("openid"))
+            );
+        } catch (Exception e) {
+            log.error("[微信支付]条码支付异常", e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "BARCODE_PAY",
+                    gatewayUrl, requestData, null, null,
+                    (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return BarcodePayResponse.fail("SYSTEM_ERROR", "微信条码支付异常: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public FacePayResponse facePay(FacePayRequest request) {
+        log.info("[微信支付]开始刷脸支付, 订单号:{}, 金额:{}", request.getOrderNo(), request.getAmount());
+
+        ChannelProperties.WechatProperties config = channelProperties.getWechat();
+        String appId = StrUtil.isNotBlank(request.getChannelAppId()) ? request.getChannelAppId() : config.getAppId();
+        String mchId = StrUtil.isNotBlank(request.getChannelMerchantId()) ? request.getChannelMerchantId() : config.getMchId();
+        String apiKey = StrUtil.isNotBlank(request.getChannelSecretKey()) ? request.getChannelSecretKey() : config.getApiKey();
+
+        Map<String, String> params = new TreeMap<>();
+        params.put("appid", appId);
+        params.put("mch_id", mchId);
+        params.put("nonce_str", IdUtil.fastSimpleUUID());
+        params.put("body", request.getSubject());
+        params.put("out_trade_no", request.getOrderNo());
+        params.put("total_fee", request.getAmount().multiply(new BigDecimal("100")).intValue() + "");
+        params.put("spbill_create_ip", StrUtil.isNotBlank(request.getClientIp()) ? request.getClientIp() : "127.0.0.1");
+        params.put("openid", StrUtil.isNotBlank(request.getOpenId()) ? request.getOpenId() : "");
+        params.put("face_code", StrUtil.isNotBlank(request.getFaceCode()) ? request.getFaceCode() : "");
+
+        long startTime = System.currentTimeMillis();
+        String requestData = JSON.toJSONString(params);
+        String gatewayUrl = config.getGatewayUrl() + "/pay/facepay";
+
+        try {
+            if (SandboxContext.isSandboxMode() || config.getSandboxMode() == 1) {
+                return super.facePay(request);
+            }
+
+            params.put("sign", SignUtil.wechatSign(params, apiKey));
+            String xmlParams = mapToXml(params);
+            String result = HttpUtil.postXml(gatewayUrl, xmlParams);
+            Map<String, String> resultMap = xmlToMap(result);
+
+            if (!SUCCESS_CODE.equals(resultMap.get("return_code"))) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), resultMap.get("return_msg"));
+                return FacePayResponse.fail(FAIL_CODE, resultMap.getOrDefault("return_msg", "微信刷脸支付失败"));
+            }
+
+            String errCode = resultMap.get("err_code");
+            if ("FACE_AUTH_REQUIRED".equalsIgnoreCase(errCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "需要刷脸验证");
+                return FacePayResponse.needAuth(resultMap.get("face_auth_token"),
+                        resultMap.getOrDefault("err_code_des", "需要刷脸验证"));
+            }
+
+            if ("USERPAYING".equalsIgnoreCase(errCode)) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), "用户确认中");
+                return FacePayResponse.paying(request.getOrderNo(), "请在手机上确认支付");
+            }
+
+            if (!SUCCESS_CODE.equals(resultMap.get("result_code"))) {
+                saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                        gatewayUrl, requestData, result, null,
+                        (int) (System.currentTimeMillis() - startTime), resultMap.get("err_code_des"));
+                return FacePayResponse.fail(errCode, resultMap.getOrDefault("err_code_des", "微信刷脸支付失败"));
+            }
+
+            String transactionId = resultMap.get("transaction_id");
+            BigDecimal amount = new BigDecimal(resultMap.getOrDefault("total_fee", "0"))
+                    .divide(new BigDecimal("100"), 2, BigDecimal.ROUND_HALF_UP);
+            String timeEnd = resultMap.get("time_end");
+            LocalDateTime payTime = null;
+            if (StrUtil.isNotBlank(timeEnd)) {
+                payTime = LocalDateTime.parse(timeEnd, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            }
+
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                    gatewayUrl, requestData, result, transactionId,
+                    (int) (System.currentTimeMillis() - startTime), null);
+            return FacePayResponse.success(
+                    request.getOrderNo(),
+                    transactionId,
+                    amount,
+                    payTime,
+                    resultMap.get("openid"),
+                    maskLogonId(resultMap.get("openid")),
+                    resultMap.get("openid")
+            );
+        } catch (Exception e) {
+            log.error("[微信支付]刷脸支付异常", e);
+            saveChannelLog(request.getMerchantNo(), request.getOrderNo(), "FACE_PAY",
+                    gatewayUrl, requestData, null, null,
+                    (int) (System.currentTimeMillis() - startTime), e.getMessage());
+            return FacePayResponse.fail("SYSTEM_ERROR", "微信刷脸支付异常: " + e.getMessage());
+        }
+    }
+
+    private String maskLogonId(String logonId) {
+        if (StrUtil.isBlank(logonId)) {
+            return "";
+        }
+        int len = logonId.length();
+        if (len <= 6) {
+            return logonId.charAt(0) + "****" + logonId.charAt(len - 1);
+        }
+        return logonId.substring(0, 3) + "****" + logonId.substring(len - 3);
+    }
 }
