@@ -58,6 +58,8 @@ public class PayOrder implements Serializable {
 
     private String channelTradeNo;
 
+    private String parentOrderNo;
+
     private LocalDateTime payTime;
 
     private LocalDateTime expireTime;

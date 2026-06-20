@@ -1,6 +1,7 @@
 package com.payhub.pay.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.payhub.channel.dto.UnifiedOrderResponse;
 import com.payhub.channel.strategy.PayChannelStrategy;
@@ -13,9 +14,11 @@ import com.payhub.common.utils.QrCodeUtil;
 import com.payhub.pay.dto.AggregateCodeOrderRequest;
 import com.payhub.pay.dto.AggregateCodeOrderResponse;
 import com.payhub.pay.dto.AggregateCodeQueryResponse;
+import com.payhub.pay.entity.MerchantPayConfig;
 import com.payhub.pay.entity.PayOrder;
 import com.payhub.pay.service.AggregateCodePayService;
 import com.payhub.pay.service.PayOrderService;
+import com.payhub.pay.service.PayRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -38,8 +43,11 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
     public static final String TYPE_NATIVE = "NATIVE";
     public static final String TYPE_JSAPI = "JSAPI";
 
-    @Value("${payhub.aggregate.qr-code.base-url:/api/public/aggregate/qr}")
-    private String qrCodeBaseUrl;
+    @Value("${payhub.aggregate.gateway-domain:http://localhost:8080}")
+    private String gatewayDomain;
+
+    @Value("${payhub.aggregate.qr-code.path:/api/public/aggregate/qr}")
+    private String qrCodePath;
 
     @Value("${payhub.aggregate.qr-code.default-size:300}")
     private int defaultQrCodeSize;
@@ -47,11 +55,17 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
     @Value("${payhub.aggregate.order-expire-minutes:30}")
     private int orderExpireMinutes;
 
+    @Value("${payhub.aggregate.notify-path:/api/pay/notify}")
+    private String notifyPath;
+
     @Autowired
     private PayOrderService payOrderService;
 
     @Autowired
     private PayChannelStrategyFactory payChannelStrategyFactory;
+
+    @Autowired
+    private PayRouterService payRouterService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -62,6 +76,7 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
         LambdaQueryWrapper<PayOrder> orderWrapper = new LambdaQueryWrapper<>();
         orderWrapper.eq(PayOrder::getMerchantNo, request.getMerchantNo())
                 .eq(PayOrder::getMerchantOrderNo, request.getMerchantOrderNo())
+                .isNull(PayOrder::getParentOrderNo)
                 .last("LIMIT 1");
         PayOrder existOrder = payOrderService.getOne(orderWrapper);
         if (existOrder != null && !PayStatusEnum.FAIL.getCode().equals(existOrder.getPayStatus())) {
@@ -99,6 +114,7 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
         order.setExpireTime(LocalDateTime.now().plusMinutes(orderExpireMinutes));
         order.setFeeAmount(BigDecimal.ZERO);
         order.setActualAmount(request.getPayAmount());
+        order.setParentOrderNo(null);
 
         payOrderService.save(order);
 
@@ -189,10 +205,26 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AggregateCodeOrderResponse getOrCreateChannelOrder(String orderNo, String channel, String payType, HttpServletRequest request) {
-        PayOrder order = payOrderService.getOne(
+        PayOrder aggregateOrder = payOrderService.getOne(
                 new LambdaQueryWrapper<PayOrder>().eq(PayOrder::getOrderNo, orderNo));
-        if (order == null) {
+        if (aggregateOrder == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "订单不存在");
+        }
+
+        if (aggregateOrder.getPayStatus() != null && PayStatusEnum.SUCCESS.getCode().equals(aggregateOrder.getPayStatus())) {
+            log.info("聚合单已支付成功，直接返回: orderNo={}", orderNo);
+            String qrCodeUrl = buildQrCodeUrl(orderNo);
+            return AggregateCodeOrderResponse.builder()
+                    .orderNo(orderNo)
+                    .merchantOrderNo(aggregateOrder.getMerchantOrderNo())
+                    .payAmount(aggregateOrder.getPayAmount())
+                    .qrCodeUrl(qrCodeUrl)
+                    .qrCodeSize(defaultQrCodeSize)
+                    .payStatus(aggregateOrder.getPayStatus())
+                    .expireTime(aggregateOrder.getExpireTime())
+                    .payChannel(aggregateOrder.getPayChannel())
+                    .codeUrl(qrCodeUrl)
+                    .build();
         }
 
         if (StrUtil.isBlank(channel)) {
@@ -204,97 +236,153 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
 
         String targetPayType = StrUtil.isNotBlank(payType) ? payType : resolvePayTypeByChannel(channel, request);
 
-        if (order.getPayStatus() != null && order.getPayStatus() == 1) {
-            log.info("订单已支付成功，直接返回: orderNo={}", orderNo);
-            String qrCodeUrl = buildQrCodeUrl(orderNo);
-            return AggregateCodeOrderResponse.builder()
-                    .orderNo(orderNo)
-                    .merchantOrderNo(order.getMerchantOrderNo())
-                    .payAmount(order.getPayAmount())
-                    .qrCodeUrl(qrCodeUrl)
-                    .qrCodeSize(defaultQrCodeSize)
-                    .payStatus(order.getPayStatus())
-                    .expireTime(order.getExpireTime())
-                    .payChannel(order.getPayChannel())
-                    .codeUrl(qrCodeUrl)
-                    .build();
+        LambdaQueryWrapper<PayOrder> subOrderWrapper = new LambdaQueryWrapper<>();
+        subOrderWrapper.eq(PayOrder::getParentOrderNo, orderNo)
+                .eq(PayOrder::getPayChannel, channel)
+                .last("LIMIT 1");
+        PayOrder existSubOrder = payOrderService.getOne(subOrderWrapper);
+        if (existSubOrder != null && StrUtil.isNotBlank(existSubOrder.getChannelTradeNo())) {
+            log.info("该渠道子单已存在，直接返回: orderNo={}, channel={}, subOrderNo={}",
+                    orderNo, channel, existSubOrder.getOrderNo());
+            return buildSubOrderResponse(aggregateOrder, existSubOrder);
         }
 
-        if (!CHANNEL_AGGREGATE.equals(order.getPayChannel())
-                && channel.equals(order.getPayChannel())
-                && StrUtil.isNotBlank(order.getChannelTradeNo())) {
-            log.info("订单已在指定渠道创建，直接返回: orderNo={}, channel={}", orderNo, channel);
-            return buildChannelOrderResponse(order);
+        MerchantPayConfig config = payRouterService.selectChannel(
+                aggregateOrder.getMerchantNo(),
+                channel,
+                targetPayType,
+                aggregateOrder.getPayAmount(),
+                aggregateOrder.getClientIp()
+        );
+        if (config == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "未找到可用的支付通道配置，渠道=" + channel);
         }
+
+        String subOrderNo = OrderNoGenerator.generate();
+        PayOrder subOrder = new PayOrder();
+        subOrder.setOrderNo(subOrderNo);
+        subOrder.setParentOrderNo(orderNo);
+        subOrder.setMerchantNo(aggregateOrder.getMerchantNo());
+        subOrder.setMerchantOrderNo(aggregateOrder.getMerchantOrderNo());
+        subOrder.setPayAmount(aggregateOrder.getPayAmount());
+        subOrder.setPayChannel(config.getChannelCode());
+        subOrder.setPayType(targetPayType);
+        subOrder.setProductSubject(aggregateOrder.getProductSubject());
+        subOrder.setProductDetail(aggregateOrder.getProductDetail());
+        subOrder.setNotifyUrl(aggregateOrder.getNotifyUrl());
+        subOrder.setClientIp(aggregateOrder.getClientIp());
+        subOrder.setExtraParams(aggregateOrder.getExtraParams());
+        subOrder.setPayStatus(PayStatusEnum.PENDING.getCode());
+        subOrder.setExpireTime(aggregateOrder.getExpireTime());
+        subOrder.setFeeAmount(BigDecimal.ZERO);
+        subOrder.setActualAmount(aggregateOrder.getPayAmount());
+        payOrderService.save(subOrder);
 
         UnifiedOrderResponse channelResponse;
         try {
-            com.payhub.channel.dto.UnifiedOrderRequest channelRequest = buildChannelRequest(order, channel, targetPayType, request);
-            PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(channel);
+            com.payhub.channel.dto.UnifiedOrderRequest channelRequest = buildChannelRequest(subOrder, config);
+            PayChannelStrategy strategy = payChannelStrategyFactory.getStrategy(config.getChannelCode());
             channelResponse = strategy.unifiedOrder(channelRequest);
+
+            if (strategy instanceof com.payhub.channel.strategy.AbstractPayChannel) {
+                ((com.payhub.channel.strategy.AbstractPayChannel) strategy).saveChannelLog(
+                        aggregateOrder.getMerchantNo(),
+                        subOrderNo,
+                        "unifiedOrder",
+                        "",
+                        JSON.toJSONString(channelRequest),
+                        channelResponse != null ? JSON.toJSONString(channelResponse) : "",
+                        channelResponse != null ? channelResponse.getChannelTradeNo() : "",
+                        0,
+                        channelResponse != null && !channelResponse.isSuccess() ? channelResponse.getMsg() : ""
+                );
+            }
         } catch (Exception e) {
-            log.error("创建渠道订单失败: orderNo={}, channel={}", orderNo, channel, e);
+            log.error("创建渠道子单失败: orderNo={}, channel={}, subOrderNo={}", orderNo, channel, subOrderNo, e);
+            subOrder.setPayStatus(PayStatusEnum.FAIL.getCode());
+            payOrderService.updateById(subOrder);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "创建渠道支付订单失败: " + e.getMessage());
         }
 
         if (channelResponse == null || !channelResponse.isSuccess()) {
             String msg = channelResponse != null ? channelResponse.getMsg() : "渠道下单失败";
+            subOrder.setPayStatus(PayStatusEnum.FAIL.getCode());
+            payOrderService.updateById(subOrder);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "渠道下单失败: " + msg);
         }
 
-        order.setPayChannel(channel);
-        order.setPayType(targetPayType);
-        order.setChannelTradeNo(channelResponse.getChannelTradeNo());
-        payOrderService.updateById(order);
+        subOrder.setChannelTradeNo(channelResponse.getChannelTradeNo());
+        payOrderService.updateById(subOrder);
+
+        log.info("聚合码渠道子单创建成功: aggregateOrderNo={}, channel={}, payType={}, subOrderNo={}, channelTradeNo={}",
+                orderNo, channel, targetPayType, subOrderNo, channelResponse.getChannelTradeNo());
 
         String qrCodeUrl = buildQrCodeUrl(orderNo);
+        String finalPayParams = buildFinalPayParams(
+                channelResponse.getPayType(),
+                channelResponse.getPayParams(),
+                subOrder);
 
-        AggregateCodeOrderResponse resp = AggregateCodeOrderResponse.builder()
+        return AggregateCodeOrderResponse.builder()
                 .orderNo(orderNo)
-                .merchantOrderNo(order.getMerchantOrderNo())
-                .payAmount(order.getPayAmount())
+                .channelOrderNo(subOrderNo)
+                .merchantOrderNo(aggregateOrder.getMerchantOrderNo())
+                .payAmount(aggregateOrder.getPayAmount())
                 .qrCodeUrl(qrCodeUrl)
                 .qrCodeSize(defaultQrCodeSize)
-                .payStatus(order.getPayStatus())
-                .expireTime(order.getExpireTime())
+                .payStatus(subOrder.getPayStatus())
+                .expireTime(aggregateOrder.getExpireTime())
                 .payChannel(channel)
-                .payParams(channelResponse.getPayParams())
+                .channelCode(config.getChannelCode())
+                .payParams(finalPayParams)
                 .codeUrl(qrCodeUrl)
                 .build();
-
-        log.info("聚合码渠道订单创建成功: orderNo={}, channel={}, payType={}, channelTradeNo={}",
-                orderNo, channel, targetPayType, channelResponse.getChannelTradeNo());
-
-        return resp;
     }
 
-    private AggregateCodeOrderResponse buildChannelOrderResponse(PayOrder order) {
-        String qrCodeUrl = buildQrCodeUrl(order.getOrderNo());
+    private AggregateCodeOrderResponse buildSubOrderResponse(PayOrder aggregateOrder, PayOrder subOrder) {
+        String qrCodeUrl = buildQrCodeUrl(aggregateOrder.getOrderNo());
         return AggregateCodeOrderResponse.builder()
-                .orderNo(order.getOrderNo())
-                .merchantOrderNo(order.getMerchantOrderNo())
-                .payAmount(order.getPayAmount())
+                .orderNo(aggregateOrder.getOrderNo())
+                .channelOrderNo(subOrder.getOrderNo())
+                .merchantOrderNo(aggregateOrder.getMerchantOrderNo())
+                .payAmount(aggregateOrder.getPayAmount())
                 .qrCodeUrl(qrCodeUrl)
                 .qrCodeSize(defaultQrCodeSize)
-                .payStatus(order.getPayStatus())
-                .expireTime(order.getExpireTime())
-                .payChannel(order.getPayChannel())
+                .payStatus(subOrder.getPayStatus())
+                .expireTime(aggregateOrder.getExpireTime())
+                .payChannel(subOrder.getPayChannel())
+                .channelCode(subOrder.getPayChannel())
                 .codeUrl(qrCodeUrl)
                 .build();
+    }
+
+    private String buildFinalPayParams(String payType, String channelPayParams, PayOrder order) {
+        if (StrUtil.isBlank(channelPayParams)) {
+            return channelPayParams;
+        }
+        try {
+            Map<String, Object> params = JSON.parseObject(channelPayParams, Map.class);
+            if (params != null && params.get("expireTime") == null && order.getExpireTime() != null) {
+                params.put("expireTime", order.getExpireTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            }
+            return JSON.toJSONString(params);
+        } catch (Exception e) {
+            return channelPayParams;
+        }
     }
 
     private com.payhub.channel.dto.UnifiedOrderRequest buildChannelRequest(
-            PayOrder order, String channel, String payType, HttpServletRequest request) {
+            PayOrder subOrder, MerchantPayConfig config) {
         com.payhub.channel.dto.UnifiedOrderRequest channelRequest = new com.payhub.channel.dto.UnifiedOrderRequest();
-        channelRequest.setMerchantNo(order.getMerchantNo());
-        channelRequest.setOrderNo(order.getOrderNo());
-        channelRequest.setAmount(order.getPayAmount());
-        channelRequest.setSubject(order.getProductSubject());
-        channelRequest.setDetail(order.getProductDetail());
-        channelRequest.setUserIdentity(order.getUserIdentity());
-        channelRequest.setClientIp(order.getClientIp());
-        channelRequest.setPayType(payType);
-        channelRequest.setNotifyUrl("/api/pay/notify/" + channel.toLowerCase());
+        channelRequest.setMerchantNo(subOrder.getMerchantNo());
+        channelRequest.setOrderNo(subOrder.getOrderNo());
+        channelRequest.setAmount(subOrder.getPayAmount());
+        channelRequest.setSubject(subOrder.getProductSubject());
+        channelRequest.setDetail(subOrder.getProductDetail());
+        channelRequest.setUserIdentity(subOrder.getUserIdentity());
+        channelRequest.setClientIp(subOrder.getClientIp());
+        channelRequest.setPayType(subOrder.getPayType());
+        channelRequest.setNotifyUrl(buildFullNotifyUrl(config.getChannelCode()));
         return channelRequest;
     }
 
@@ -310,11 +398,35 @@ public class AggregateCodePayServiceImpl implements AggregateCodePayService {
     }
 
     private String buildQrCodeUrl(String orderNo) {
-        String base = qrCodeBaseUrl;
-        if (base.endsWith("/")) {
-            base = base.substring(0, base.length() - 1);
+        String domain = normalizeDomain(gatewayDomain);
+        String path = qrCodePath.startsWith("/") ? qrCodePath : "/" + qrCodePath;
+        if (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
         }
-        return base + "/" + orderNo;
+        return domain + path + "/" + orderNo;
+    }
+
+    private String buildFullNotifyUrl(String channelCode) {
+        String domain = normalizeDomain(gatewayDomain);
+        String path = notifyPath.startsWith("/") ? notifyPath : "/" + notifyPath;
+        if (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        return domain + path + "/" + (channelCode != null ? channelCode.toLowerCase() : "");
+    }
+
+    private String normalizeDomain(String domain) {
+        if (StrUtil.isBlank(domain)) {
+            return "http://localhost:8080";
+        }
+        String d = domain.trim();
+        if (!d.startsWith("http://") && !d.startsWith("https://")) {
+            d = "https://" + d;
+        }
+        if (d.endsWith("/")) {
+            d = d.substring(0, d.length() - 1);
+        }
+        return d;
     }
 
     private String resolvePayTypeByChannel(String channel, HttpServletRequest request) {

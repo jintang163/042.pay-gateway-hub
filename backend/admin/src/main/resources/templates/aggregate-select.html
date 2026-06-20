@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>选择支付方式</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      background: #f5f6fa;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    h1 { font-size: 20px; color: #333; margin-bottom: 4px; text-align: center; }
+    .sub { font-size: 13px; color: #999; text-align: center; margin-bottom: 24px; }
+    .channel-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .channel-item {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      border: 1px solid #eee;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all .15s;
+      background: #fff;
+    }
+    .channel-item:active { transform: scale(0.98); background: #f5f7fa; }
+    .channel-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 22px;
+      font-weight: bold;
+      margin-right: 14px;
+      flex-shrink: 0;
+    }
+    .icon-wechat { background: #07c160; }
+    .icon-alipay { background: #1677ff; }
+    .icon-unionpay { background: #e60012; }
+    .channel-info { flex: 1; }
+    .channel-name { font-size: 16px; font-weight: 600; color: #333; }
+    .channel-desc { font-size: 12px; color: #999; margin-top: 2px; }
+    .arrow { color: #ccc; font-size: 20px; font-weight: bold; }
+    .footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px dashed #eee;
+      text-align: center;
+      font-size: 12px;
+      color: #bbb;
+      line-height: 1.8;
+    }
+    .loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    .loading.show { display: flex; }
+    .loading-box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px 32px;
+      color: #333;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>请选择支付方式</h1>
+    <p class="sub">订单号：<span th:text="${orderNo}">-</span></p>
+    <ul class="channel-list">
+      <li class="channel-item" data-channel="WECHAT_PAY">
+        <div class="channel-icon icon-wechat">微</div>
+        <div class="channel-info">
+          <div class="channel-name">微信支付</div>
+          <div class="channel-desc">推荐使用微信扫码或APP内支付</div>
+        </div>
+        <div class="arrow">›</div>
+      </li>
+      <li class="channel-item" data-channel="ALIPAY">
+        <div class="channel-icon icon-alipay">支</div>
+        <div class="channel-info">
+          <div class="channel-name">支付宝支付</div>
+          <div class="channel-desc">支持花呗、余额、银行卡</div>
+        </div>
+        <div class="arrow">›</div>
+      </li>
+      <li class="channel-item" data-channel="UNION_PAY">
+        <div class="channel-icon icon-unionpay">闪</div>
+        <div class="channel-info">
+          <div class="channel-name">云闪付支付</div>
+          <div class="channel-desc">银联云闪付APP扫码支付</div>
+        </div>
+        <div class="arrow">›</div>
+      </li>
+    </ul>
+    <div class="footer" th:if="${baseUrl != null}">
+      由 PayHub 聚合支付提供服务
+    </div>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="loading-box">正在跳转支付...</div>
+  </div>
+
+<script th:inline="javascript">
+  var orderNo = /*[[${orderNo}]]*/ '';
+  var baseUrl = /*[[${baseUrl}]]*/ '';
+  document.querySelectorAll('.channel-item').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var ch = el.getAttribute('data-channel');
+      document.getElementById('loading').classList.add('show');
+      var url = (baseUrl || '/api/public/aggregate/qr/' + orderNo) + '?channel=' + ch;
+      location.href = url;
+    });
+  });
+</script>
+</body>
+</html>

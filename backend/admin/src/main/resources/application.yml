@@ -117,6 +117,15 @@ payhub:
     max-size: 5242880
   payment-page:
     base-url: /h5/payment
+  aggregate:
+    gateway-domain: http://localhost:8080
+    qr-code:
+      path: /api/public/aggregate/qr
+      default-size: 300
+    notify-path: /api/pay/notify
+    order-expire-minutes: 30
+    show-channel-select: true
+    frontend-redirect-url: ""
   mail:
     sandbox: true
     sender-name: 支付网关聚合平台

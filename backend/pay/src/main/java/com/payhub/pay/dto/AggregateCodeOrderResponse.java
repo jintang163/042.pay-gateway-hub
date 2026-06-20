@@ -38,4 +38,8 @@ public class AggregateCodeOrderResponse implements Serializable {
     private String payParams;
 
     private String codeUrl;
+
+    private String channelOrderNo;
+
+    private String channelCode;
 }

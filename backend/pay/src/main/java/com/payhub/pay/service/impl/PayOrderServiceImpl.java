@@ -448,6 +448,15 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             throw new BusinessException(ResultCode.NOT_FOUND, "订单不存在");
         }
 
+        PayOrder parentOrder = null;
+        if (StrUtil.isNotBlank(order.getParentOrderNo())) {
+            LambdaQueryWrapper<PayOrder> pWrapper = new LambdaQueryWrapper<>();
+            pWrapper.eq(PayOrder::getOrderNo, order.getParentOrderNo()).last("LIMIT 1");
+            parentOrder = this.getOne(pWrapper);
+            log.info("回调订单为聚合子单: subOrderNo={}, parentOrderNo={}",
+                    order.getOrderNo(), order.getParentOrderNo());
+        }
+
         if (!PayStatusEnum.PENDING.getCode().equals(order.getPayStatus())
                 && !PayStatusEnum.FAIL.getCode().equals(order.getPayStatus())) {
             log.info("订单状态已处理, orderNo={}, status={}", order.getOrderNo(), order.getPayStatus());
@@ -462,45 +471,62 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             this.updateById(order);
             log.info("订单支付成功, orderNo={}, channelTradeNo={}", order.getOrderNo(), notifyResult.getChannelTradeNo());
 
-            notifyMerchantAsync(order);
+            PayOrder notifyOrder = order;
+            if (parentOrder != null) {
+                if (PayStatusEnum.PENDING.getCode().equals(parentOrder.getPayStatus())
+                        || PayStatusEnum.FAIL.getCode().equals(parentOrder.getPayStatus())) {
+                    parentOrder.setPayStatus(PayStatusEnum.SUCCESS.getCode());
+                    parentOrder.setPayTime(order.getPayTime());
+                    parentOrder.setChannelTradeNo(order.getChannelTradeNo());
+                    parentOrder.setPayChannel(order.getPayChannel());
+                    this.updateById(parentOrder);
+                    log.info("聚合子单成功已同步到父单: parentOrderNo={}, subOrderNo={}",
+                            parentOrder.getOrderNo(), order.getOrderNo());
+                }
+                notifyOrder = parentOrder;
+            }
+
+            notifyMerchantAsync(notifyOrder);
 
             if (agentProfitService != null) {
                 try {
-                    BigDecimal feeAmount = order.getFeeAmount() != null ? order.getFeeAmount() : BigDecimal.ZERO;
-                    agentProfitService.calculateProfit(order.getOrderNo(), order.getMerchantNo(),
-                            order.getPayAmount(), feeAmount);
-                    log.info("代理分润计算触发成功, orderNo={}", order.getOrderNo());
+                    PayOrder profitOrder = parentOrder != null ? parentOrder : order;
+                    BigDecimal feeAmount = profitOrder.getFeeAmount() != null ? profitOrder.getFeeAmount() : BigDecimal.ZERO;
+                    agentProfitService.calculateProfit(profitOrder.getOrderNo(), profitOrder.getMerchantNo(),
+                            profitOrder.getPayAmount(), feeAmount);
+                    log.info("代理分润计算触发成功, orderNo={}", profitOrder.getOrderNo());
                 } catch (Exception e) {
                     log.error("代理分润计算触发失败, orderNo={}", order.getOrderNo(), e);
                 }
             }
 
             if (marketingDiscountService != null) {
-                if (StrUtil.isNotBlank(order.getCouponCode())) {
+                PayOrder discountOrder = parentOrder != null ? parentOrder : order;
+                if (StrUtil.isNotBlank(discountOrder.getCouponCode())) {
                     try {
                         marketingDiscountService.recordCouponUse(
-                                order.getOrderNo(),
-                                order.getMerchantNo(),
-                                order.getCouponCode(),
-                                order.getPayAmount(),
-                                order.getCouponDiscount(),
-                                order.getUserIdentity()
+                                discountOrder.getOrderNo(),
+                                discountOrder.getMerchantNo(),
+                                discountOrder.getCouponCode(),
+                                discountOrder.getPayAmount(),
+                                discountOrder.getCouponDiscount(),
+                                discountOrder.getUserIdentity()
                         );
                         log.info("支付成功-优惠券核销完成, orderNo={}, couponCode={}",
-                                order.getOrderNo(), order.getCouponCode());
+                                discountOrder.getOrderNo(), discountOrder.getCouponCode());
                     } catch (Exception e) {
                         log.error("支付成功-优惠券核销失败, orderNo={}, couponCode={}",
-                                order.getOrderNo(), order.getCouponCode(), e);
+                                discountOrder.getOrderNo(), discountOrder.getCouponCode(), e);
                     }
                 }
-                if (StrUtil.isNotBlank(order.getLinkCode())) {
+                if (StrUtil.isNotBlank(discountOrder.getLinkCode())) {
                     try {
-                        marketingDiscountService.incrementPayLinkUsed(order.getLinkCode());
+                        marketingDiscountService.incrementPayLinkUsed(discountOrder.getLinkCode());
                         log.info("支付成功-支付链接使用次数+1, orderNo={}, linkCode={}",
-                                order.getOrderNo(), order.getLinkCode());
+                                discountOrder.getOrderNo(), discountOrder.getLinkCode());
                     } catch (Exception e) {
                         log.error("支付成功-支付链接使用次数递增失败, orderNo={}, linkCode={}",
-                                order.getOrderNo(), order.getLinkCode(), e);
+                                discountOrder.getOrderNo(), discountOrder.getLinkCode(), e);
                     }
                 }
             }
@@ -510,7 +536,23 @@ public class PayOrderServiceImpl extends ServiceImpl<PayOrderMapper, PayOrder> i
             this.updateById(order);
             log.info("订单支付失败, orderNo={}", order.getOrderNo());
 
-            notifyMerchantAsync(order);
+            PayOrder notifyOrder = order;
+            if (parentOrder != null) {
+                long successSiblingCount = this.count(new LambdaQueryWrapper<PayOrder>()
+                        .eq(PayOrder::getParentOrderNo, parentOrder.getOrderNo())
+                        .eq(PayOrder::getPayStatus, PayStatusEnum.SUCCESS.getCode()));
+                if (successSiblingCount == 0
+                        && (PayStatusEnum.PENDING.getCode().equals(parentOrder.getPayStatus())
+                        || PayStatusEnum.FAIL.getCode().equals(parentOrder.getPayStatus()))) {
+                    parentOrder.setPayStatus(PayStatusEnum.FAIL.getCode());
+                    this.updateById(parentOrder);
+                    log.info("聚合子单失败且无其他成功子单，父单标记失败: parentOrderNo={}, subOrderNo={}",
+                            parentOrder.getOrderNo(), order.getOrderNo());
+                }
+                notifyOrder = parentOrder;
+            }
+
+            notifyMerchantAsync(notifyOrder);
         }
 
         return "success";

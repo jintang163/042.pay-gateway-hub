@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS `pay_order` (
   `product_detail` VARCHAR(1024) DEFAULT NULL COMMENT '商品描述',
   `extra_params` JSON DEFAULT NULL COMMENT '扩展参数（JSON）',
   `channel_trade_no` VARCHAR(128) DEFAULT NULL COMMENT '渠道交易流水号',
+  `parent_order_no` VARCHAR(64) DEFAULT NULL COMMENT '父订单号（聚合单子单关联用）',
   `client_ip` VARCHAR(64) DEFAULT NULL COMMENT '客户端IP',
   `notify_status` TINYINT NOT NULL DEFAULT 0 COMMENT '通知状态：0未通知 1通知成功 2通知失败',
   `notify_count` INT NOT NULL DEFAULT 0 COMMENT '通知次数',

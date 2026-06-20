@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>微信支付</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      background: linear-gradient(135deg, #07c160 0%, #10ad6a 100%);
+      min-height: 100vh;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      color: #333;
+      border-radius: 16px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+      text-align: center;
+    }
+    .logo {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 16px;
+      background: #07c160;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      color: #fff;
+      font-weight: bold;
+    }
+    h1 { font-size: 20px; color: #333; margin-bottom: 8px; }
+    .amount {
+      font-size: 40px;
+      font-weight: 700;
+      color: #07c160;
+      margin: 16px 0 4px;
+    }
+    .amount-label { color: #999; font-size: 13px; margin-bottom: 24px; }
+    .tip-box {
+      background: #f7f8fa;
+      border-radius: 10px;
+      padding: 14px 12px;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+      min-height: 40px;
+    }
+    .tip-box.error { background: #fff1f0; color: #cf1322; }
+    .tip-box.success { background: #f6ffed; color: #389e0d; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #07c160;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .order-info {
+      text-align: left;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px dashed #eee;
+      font-size: 12px;
+      color: #999;
+      line-height: 1.8;
+    }
+    .qr-box { padding: 12px; background: #fff; border: 1px solid #eee; border-radius: 10px; margin-bottom: 16px; }
+    .qr-box img { width: 200px; height: 200px; display: block; margin: 0 auto; }
+    .qr-tip { font-size: 13px; color: #666; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">微</div>
+    <h1>微信支付</h1>
+    <div class="amount" th:text="'¥' + ${amount}">¥0.00</div>
+    <div class="amount-label">支付金额</div>
+
+    <div id="nativeBox" class="qr-box" style="display:none;">
+      <div id="nativeQrImg"></div>
+      <div class="qr-tip">请使用微信扫一扫完成支付</div>
+    </div>
+
+    <div id="tipBox" class="tip-box">正在准备微信支付...</div>
+
+    <button id="payBtn" class="btn" style="display:none;">立即支付</button>
+    <button id="retryBtn" class="btn" style="display:none; background:#597ef7;">重试</button>
+
+    <div class="order-info">
+      <div>订单号：<span th:text="${orderNo}">-</span></div>
+      <div>支付渠道：微信支付</div>
+    </div>
+  </div>
+
+<script th:inline="javascript">
+  var orderNo = /*[[${orderNo}]]*/ '';
+  var payParamsRaw = /*[[${payParams}]]*/ '{}';
+  var gatewayDomain = /*[[${#httpServletRequest.getScheme() + '://' + #httpServletRequest.getServerName() + ':' + #httpServletRequest.getServerPort() + #httpServletRequest.getContextPath()}]]*/ '';
+  var channel = 'WECHAT_PAY';
+
+  function parsePayParams() {
+    try { return typeof payParamsRaw === 'string' ? JSON.parse(payParamsRaw || '{}') : (payParamsRaw || {}); }
+    catch(e) { return {}; }
+  }
+
+  function setTip(msg, type) {
+    var el = document.getElementById('tipBox');
+    el.className = 'tip-box' + (type ? ' ' + type : '');
+    el.innerHTML = msg;
+  }
+
+  function pollStatus() {
+    var ticks = 0;
+    var timer = setInterval(function() {
+      fetch(gatewayDomain + '/api/public/aggregate/qr/' + orderNo + '/status', { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(json) {
+          if (json && json.success && json.data) {
+            var s = json.data.payStatus;
+            if (s === 1) {
+              clearInterval(timer);
+              setTip('支付成功，正在跳转...', 'success');
+              setTimeout(function() {
+                if (window.opener) { try { window.opener.postMessage({ status: 'SUCCESS', orderNo: orderNo }, '*'); } catch(e){} }
+                WeixinJSBridge && WeixinJSBridge.invoke && WeixinJSBridge.invoke('closeWindow');
+              }, 1000);
+            } else if (s === 2) {
+              clearInterval(timer);
+              setTip('支付失败，请重试或更换支付方式', 'error');
+              document.getElementById('retryBtn').style.display = 'block';
+            } else if (s === 3) {
+              clearInterval(timer);
+              setTip('订单已关闭', 'error');
+            }
+          }
+          ticks++;
+          if (ticks > 180) { clearInterval(timer); setTip('等待超时，请刷新重试', 'error'); }
+        })
+        .catch(function() { ticks++; });
+    }, 2000);
+  }
+
+  function ensureWeixinJsBridge(cb) {
+    if (typeof WeixinJSBridge !== 'undefined') { cb(); return; }
+    if (document.addEventListener) {
+      document.addEventListener('WeixinJSBridgeReady', cb, false);
+    } else if (document.attachEvent) {
+      document.attachEvent('WeixinJSBridgeReady', cb);
+      document.attachEvent('onWeixinJSBridgeReady', cb);
+    } else {
+      setTimeout(function() { ensureWeixinJsBridge(cb); }, 100);
+    }
+  }
+
+  function invokeJsApi(p) {
+    ensureWeixinJsBridge(function() {
+      setTip('正在唤起微信支付...');
+      WeixinJSBridge.invoke('getBrandWCPayRequest', {
+        'appId': p.appId || p.appid,
+        'timeStamp': String(p.timeStamp || p.timestamp || ''),
+        'nonceStr': p.nonceStr || p.noncestr || '',
+        'package': p.package || p['package_value'] || '',
+        'signType': p.signType || p.signtype || 'MD5',
+        'paySign': p.paySign || p.paysign || ''
+      }, function(res) {
+        if (res.err_msg === 'get_brand_wcpay_request:ok') {
+          setTip('支付完成，等待确认...', 'success');
+          pollStatus();
+        } else if (res.err_msg === 'get_brand_wcpay_request:cancel') {
+          setTip('已取消支付', 'error');
+          document.getElementById('retryBtn').style.display = 'block';
+        } else {
+          setTip('支付失败：' + (res.err_msg || res.errMsg || '未知错误'), 'error');
+          document.getElementById('retryBtn').style.display = 'block';
+        }
+      });
+    });
+  }
+
+  function showNativeQr(codeUrl) {
+    document.getElementById('nativeBox').style.display = 'block';
+    var img = document.createElement('img');
+    img.alt = '微信支付二维码';
+    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(codeUrl);
+    img.onerror = function() { this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23fff"/><text x="50%25" y="50%25" font-size="14" fill="%23666" text-anchor="middle">二维码</text></svg>'; };
+    document.getElementById('nativeQrImg').appendChild(img);
+    setTip('请使用微信扫一扫完成支付');
+    pollStatus();
+  }
+
+  function fallbackToRecreate() {
+    setTip('正在重新创建微信支付订单...');
+    fetch(gatewayDomain + '/api/public/aggregate/qr/' + orderNo + '/channel?channel=' + channel + '&payType=AUTO', { credentials: 'include' })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json && json.success && json.data) {
+          payParamsRaw = json.data.payParams || '{}';
+          startPay();
+        } else {
+          setTip('创建订单失败：' + (json ? json.message : '网络错误'), 'error');
+          document.getElementById('retryBtn').style.display = 'block';
+        }
+      })
+      .catch(function() {
+        setTip('创建订单失败，请刷新重试', 'error');
+        document.getElementById('retryBtn').style.display = 'block';
+      });
+  }
+
+  function startPay() {
+    var p = parsePayParams();
+    if (p.codeUrl || p.code_url || p.qrCode) {
+      showNativeQr(p.codeUrl || p.code_url || p.qrCode);
+      return;
+    }
+    if (p.appId || p.appid || p.timeStamp || p.package) {
+      invokeJsApi(p);
+      return;
+    }
+    if (p.payInfo || p.pay_info) {
+      try {
+        var inner = typeof (p.payInfo || p.pay_info) === 'string'
+          ? JSON.parse(p.payInfo || p.pay_info) : (p.payInfo || p.pay_info);
+        invokeJsApi(Object.assign({}, p, inner));
+        return;
+      } catch(e) {}
+    }
+    if (Object.keys(p).length === 0) {
+      fallbackToRecreate();
+    } else {
+      showNativeQr(JSON.stringify(p));
+    }
+  }
+
+  document.getElementById('payBtn') && (document.getElementById('payBtn').onclick = startPay);
+  document.getElementById('retryBtn') && (document.getElementById('retryBtn').onclick = function() {
+    document.getElementById('retryBtn').style.display = 'none';
+    fallbackToRecreate();
+  });
+
+  window.onload = function() {
+    setTimeout(startPay, 50);
+  };
+</script>
+</body>
+</html>
