@@ -34,6 +34,9 @@ public class AgentWithdrawServiceImpl extends ServiceImpl<AgentWithdrawMapper, A
     @Autowired
     private AgentProfitService agentProfitService;
 
+    @Autowired
+    private UnifiedTransferService unifiedTransferService;
+
     private static final BigDecimal MIN_WITHDRAW_AMOUNT = new BigDecimal("10");
 
     private static final BigDecimal WITHDRAW_FEE_RATE = new BigDecimal("0");
@@ -140,16 +143,16 @@ public class AgentWithdrawServiceImpl extends ServiceImpl<AgentWithdrawMapper, A
         if (withdraw == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "提现申请不存在");
         }
-        if (!AgentWithdrawStatusEnum.APPROVED.getCode().equals(withdraw.getWithdrawStatus())) {
+        if (!AgentWithdrawStatusEnum.APPROVED.getCode().equals(withdraw.getWithdrawStatus())
+                && !AgentWithdrawStatusEnum.TRANSFERRING.getCode().equals(withdraw.getWithdrawStatus())
+                && !AgentWithdrawStatusEnum.FAILED.getCode().equals(withdraw.getWithdrawStatus())) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "当前状态不允许转账");
         }
-        withdraw.setWithdrawStatus(AgentWithdrawStatusEnum.TRANSFERRING.getCode());
-        this.updateById(withdraw);
-        withdraw.setWithdrawStatus(AgentWithdrawStatusEnum.SUCCESS.getCode());
-        withdraw.setTransferNo(OrderNoGenerator.generateWithPrefix("TFR"));
-        withdraw.setTransferTime(LocalDateTime.now());
-        this.updateById(withdraw);
-        log.info("提现转账执行完成: id={}, withdrawNo={}", id, withdraw.getWithdrawNo());
+
+        log.info("佣金提现走统一代付链路: id={}, withdrawNo={}", id, withdraw.getWithdrawNo());
+        UnifiedTransferService.TransferContext ctx = unifiedTransferService.buildContextForAgentWithdraw(id);
+        unifiedTransferService.executeTransfer(ctx);
+        log.info("佣金提现统一代付执行完成: id={}, withdrawNo={}", id, withdraw.getWithdrawNo());
     }
 
     @Override
@@ -160,15 +163,11 @@ public class AgentWithdrawServiceImpl extends ServiceImpl<AgentWithdrawMapper, A
         List<AgentWithdraw> failedList = this.list(wrapper);
         for (AgentWithdraw withdraw : failedList) {
             try {
-                withdraw.setTransferRetryCount(withdraw.getTransferRetryCount() != null ? withdraw.getTransferRetryCount() + 1 : 1);
-                withdraw.setWithdrawStatus(AgentWithdrawStatusEnum.TRANSFERRING.getCode());
-                this.updateById(withdraw);
-                withdraw.setWithdrawStatus(AgentWithdrawStatusEnum.SUCCESS.getCode());
-                withdraw.setTransferTime(LocalDateTime.now());
-                this.updateById(withdraw);
-                log.info("提现重试成功: id={}", withdraw.getId());
+                log.info("重试佣金提现(统一链路): id={}, withdrawNo={}", withdraw.getId(), withdraw.getWithdrawNo());
+                UnifiedTransferService.TransferContext ctx = unifiedTransferService.buildContextForAgentWithdraw(withdraw.getId());
+                unifiedTransferService.executeTransfer(ctx);
             } catch (Exception e) {
-                log.error("提现重试失败: id={}", withdraw.getId(), e);
+                log.error("重试佣金提现失败(统一链路): id={}", withdraw.getId(), e);
             }
         }
     }

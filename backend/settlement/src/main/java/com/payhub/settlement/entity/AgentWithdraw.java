@@ -46,6 +46,8 @@ public class AgentWithdraw implements Serializable {
 
     private String transferChannel;
 
+    private String channelTransferNo;
+
     private LocalDateTime transferTime;
 
     private String transferFailReason;

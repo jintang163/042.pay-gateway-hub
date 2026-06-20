@@ -5,21 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.payhub.channel.transfer.TransferRequest;
 import com.payhub.channel.transfer.TransferResult;
-import com.payhub.channel.transfer.TransferService;
-import com.payhub.channel.transfer.TransferServiceFactory;
-import com.payhub.common.context.SandboxContext;
-import com.payhub.common.enums.SandboxSceneEnum;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
-import com.payhub.common.utils.OrderNoGenerator;
 import com.payhub.settlement.entity.PaySplitDetail;
-import com.payhub.settlement.entity.SplitReceiver;
-import com.payhub.settlement.enums.SplitReceiverVerifyStatusEnum;
 import com.payhub.settlement.mapper.PaySplitDetailMapper;
-import com.payhub.settlement.service.SplitReceiverService;
+import com.payhub.settlement.service.SplitTransferAlertService;
 import com.payhub.settlement.service.SplitTransferService;
+import com.payhub.settlement.service.UnifiedTransferService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -40,22 +32,11 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
     public static final int TRANSFER_STATUS_SUCCESS = 2;
     public static final int TRANSFER_STATUS_FAIL = 3;
 
-    public static final int DEFAULT_MAX_RETRY_COUNT = 5;
-
-    @Value("${payhub.split.transfer.default-channel:UNION_PAY}")
-    private String defaultTransferChannel;
-
     @Value("${payhub.split.transfer.max-retry-count:5}")
     private int maxRetryCount;
 
-    @Value("${payhub.split.transfer.retry-delay-minutes:30}")
-    private int retryDelayMinutes;
-
-    @Autowired(required = false)
-    private TransferServiceFactory transferServiceFactory;
-
     @Autowired
-    private SplitReceiverService splitReceiverService;
+    private UnifiedTransferService unifiedTransferService;
 
     @Autowired(required = false)
     private SplitTransferAlertService splitTransferAlertService;
@@ -65,6 +46,15 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
     public boolean executeTransfer(PaySplitDetail detail) {
         if (detail == null) {
             return false;
+        }
+        return executeTransferById(detail.getId());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public boolean executeTransferById(Long splitDetailId) {
+        PaySplitDetail detail = this.getById(splitDetailId);
+        if (detail == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "分账明细不存在");
         }
         log.info("开始执行分账代付, splitDetailNo={}, orderNo={}, receiverAccount={}",
                 detail.getSplitDetailNo(), detail.getOrderNo(), detail.getReceiverAccount());
@@ -77,145 +67,75 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
         if (detail.getTransferRetryCount() != null && detail.getTransferRetryCount() >= maxRetryCount) {
             log.error("分账明细已达最大重试次数，不再执行代付: splitDetailNo={}, retryCount={}",
                     detail.getSplitDetailNo(), detail.getTransferRetryCount());
-            return false;
-        }
-
-        String merchantNo = detail.getMerchantNo();
-        String receiverAccount = detail.getReceiverAccount();
-        SplitReceiver receiver = splitReceiverService.checkReceiverVerified(receiverAccount, merchantNo);
-        if (receiver == null) {
-            log.error("分账接收方不存在或未认证: splitDetailNo={}, receiverAccount={}",
-                    detail.getSplitDetailNo(), receiverAccount);
-            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
-            detail.setTransferFailReason("分账接收方不存在或未认证");
-            this.updateById(detail);
+            if (splitTransferAlertService != null) {
+                splitTransferAlertService.alertTransferRetryExhausted(detail);
+            }
             return false;
         }
 
         if (detail.getSplitAmount() == null || detail.getSplitAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            log.warn("分账金额无效，跳过代付: splitDetailNo={}, amount={}", detail.getSplitDetailNo(), detail.getSplitAmount());
+            log.warn("分账金额无效，跳过代付并标记成功: splitDetailNo={}, amount={}",
+                    detail.getSplitDetailNo(), detail.getSplitAmount());
             detail.setTransferStatus(TRANSFER_STATUS_SUCCESS);
-            detail.setTransferTime(LocalDateTime.now());
+            detail.setTransferTime(java.time.LocalDateTime.now());
             this.updateById(detail);
             return true;
         }
 
-        String transferNo = detail.getTransferNo();
-        if (StrUtil.isBlank(transferNo)) {
-            transferNo = OrderNoGenerator.generateWithPrefix("TF");
-            detail.setTransferNo(transferNo);
+        UnifiedTransferService.TransferContext ctx;
+        try {
+            ctx = unifiedTransferService.buildContextForSplitDetail(detail.getId());
+        } catch (BusinessException e) {
+            log.error("构建代付上下文失败: splitDetailNo={}", detail.getSplitDetailNo(), e);
+            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
+            detail.setTransferFailReason(e.getMessage());
+            this.updateById(detail);
+            return false;
         }
-
-        String channel = StrUtil.isNotBlank(detail.getTransferChannel()) ? detail.getTransferChannel() : defaultTransferChannel;
-        detail.setTransferChannel(channel);
-
-        detail.setTransferStatus(TRANSFER_STATUS_PROCESSING);
-        int currentRetryCount = detail.getTransferRetryCount() == null ? 0 : detail.getTransferRetryCount();
-        detail.setTransferRetryCount(currentRetryCount + 1);
-        this.updateById(detail);
 
         TransferResult result;
         try {
-            TransferRequest request = buildTransferRequest(detail, receiver, transferNo, channel);
-            result = callTransferService(channel, request);
-        } catch (Exception e) {
-            log.error("调用代付通道异常: splitDetailNo={}, transferNo={}, channel={}",
-                    detail.getSplitDetailNo(), transferNo, channel, e);
-            result = TransferResult.fail(transferNo, "E999", "代付通道调用异常: " + e.getMessage());
-        }
-
-        applyTransferResult(detail, result);
-        this.updateById(detail);
-
-        if (splitTransferAlertService != null) {
-            try {
-                if (TRANSFER_STATUS_FAIL == detail.getTransferStatus()) {
-                    if (detail.getTransferRetryCount() != null && detail.getTransferRetryCount() >= maxRetryCount) {
-                        splitTransferAlertService.alertTransferRetryExhausted(detail);
-                    } else {
-                        splitTransferAlertService.alertTransferFailed(detail);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("发送分账代付告警异常: splitDetailNo={}", detail.getSplitDetailNo(), e);
+            result = unifiedTransferService.executeTransfer(ctx);
+        } catch (BusinessException e) {
+            log.error("分账代付业务异常: splitDetailNo={}", detail.getSplitDetailNo(), e);
+            detail = this.getById(detail.getId());
+            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
+            if (StrUtil.isBlank(detail.getTransferFailReason())) {
+                detail.setTransferFailReason(e.getMessage());
             }
+            this.updateById(detail);
+            triggerAlert(detail);
+            return false;
+        } catch (Exception e) {
+            log.error("分账代付系统异常: splitDetailNo={}", detail.getSplitDetailNo(), e);
+            detail = this.getById(detail.getId());
+            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
+            if (StrUtil.isBlank(detail.getTransferFailReason())) {
+                detail.setTransferFailReason("系统异常: " + e.getMessage());
+            }
+            this.updateById(detail);
+            triggerAlert(detail);
+            return false;
         }
 
-        log.info("分账代付执行完成: splitDetailNo={}, transferNo={}, success={}, status={}",
-                detail.getSplitDetailNo(), transferNo, result.isSuccess(), result.getStatus());
+        triggerAlert(this.getById(detail.getId()));
         return result.isSuccess();
     }
 
-    private TransferRequest buildTransferRequest(PaySplitDetail detail, SplitReceiver receiver, String transferNo, String channel) {
-        TransferRequest request = new TransferRequest();
-        request.setTransferNo(transferNo);
-        request.setChannel(channel);
-        request.setReceiverAccount(receiver.getBankCardNo());
-        request.setReceiverName(receiver.getIdCardName());
-        request.setAmount(detail.getSplitAmount());
-        request.setBankName(receiver.getBankName());
-        request.setBankBranchName(receiver.getBankBranchName());
-        request.setReceiverType(receiver.getReceiverType());
-        request.setIdCardNo(receiver.getIdCardNo());
-        request.setIdCardName(receiver.getIdCardName());
-        request.setBankPhone(receiver.getBankPhone());
-        request.setMerchantNo(detail.getMerchantNo());
-        request.setSourceType("SPLIT");
-        request.setSourceNo(detail.getSplitDetailNo());
-        request.setRemark("分账代付-" + detail.getOrderNo());
-        return request;
-    }
-
-    private TransferResult callTransferService(String channel, TransferRequest request) {
-        if (transferServiceFactory == null) {
-            String scene = SandboxContext.getScene();
-            if (SandboxSceneEnum.TRANSFER_FAIL.getCode().equalsIgnoreCase(scene)) {
-                return TransferResult.fail(request.getTransferNo(), "E001", "沙箱强制代付失败");
-            }
-            if (SandboxSceneEnum.TRANSFER_EXCEPTION.getCode().equalsIgnoreCase(scene)) {
-                throw new BusinessException(ResultCode.SYSTEM_ERROR, "沙箱强制代付异常");
-            }
-            return TransferResult.success(request.getTransferNo(), "SB" + request.getTransferNo(), LocalDateTime.now());
-        }
-
-        TransferService transferService = transferServiceFactory.getTransferService(channel);
-        if (transferService == null) {
-            return TransferResult.fail(request.getTransferNo(), "E002", "不支持的代付通道: " + channel);
-        }
-        return transferService.transfer(request);
-    }
-
-    private void applyTransferResult(PaySplitDetail detail, TransferResult result) {
-        if (result == null) {
-            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
-            detail.setTransferFailReason("代付结果为空");
-            scheduleNextRetry(detail);
+    private void triggerAlert(PaySplitDetail detail) {
+        if (detail == null || splitTransferAlertService == null) {
             return;
         }
-
-        detail.setChannelTransferNo(result.getChannelTransferNo());
-
-        if (result.isSuccess()) {
-            detail.setTransferStatus(TRANSFER_STATUS_SUCCESS);
-            detail.setTransferTime(result.getCompleteTime() != null ? result.getCompleteTime() : LocalDateTime.now());
-            detail.setTransferFailReason(null);
-            detail.setNextTransferRetryTime(null);
-        } else if (TransferResult.STATUS_PROCESSING.equals(result.getStatus())) {
-            detail.setTransferStatus(TRANSFER_STATUS_PROCESSING);
-            detail.setNextTransferRetryTime(LocalDateTime.now().plusMinutes(retryDelayMinutes));
-        } else {
-            detail.setTransferStatus(TRANSFER_STATUS_FAIL);
-            detail.setTransferFailReason(result.getFailReason());
-            scheduleNextRetry(detail);
-        }
-    }
-
-    private void scheduleNextRetry(PaySplitDetail detail) {
-        if (detail.getTransferRetryCount() == null || detail.getTransferRetryCount() < maxRetryCount) {
-            long delayMinutes = (long) retryDelayMinutes * detail.getTransferRetryCount();
-            detail.setNextTransferRetryTime(LocalDateTime.now().plusMinutes(Math.max(delayMinutes, retryDelayMinutes)));
-        } else {
-            detail.setNextTransferRetryTime(null);
+        try {
+            if (TRANSFER_STATUS_FAIL == detail.getTransferStatus()) {
+                if (detail.getTransferRetryCount() != null && detail.getTransferRetryCount() >= maxRetryCount) {
+                    splitTransferAlertService.alertTransferRetryExhausted(detail);
+                } else {
+                    splitTransferAlertService.alertTransferFailed(detail);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("发送分账代付告警异常: splitDetailNo={}", detail.getSplitDetailNo(), e);
         }
     }
 
@@ -227,7 +147,7 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
         boolean allSuccess = true;
         for (PaySplitDetail detail : details) {
             try {
-                boolean success = executeTransfer(detail);
+                boolean success = executeTransferById(detail.getId());
                 if (!success) {
                     allSuccess = false;
                 }
@@ -246,7 +166,7 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
         if (detail == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "分账明细不存在");
         }
-        return executeTransfer(detail);
+        return executeTransferById(splitDetailId);
     }
 
     @Override
@@ -265,10 +185,9 @@ public class SplitTransferServiceImpl extends ServiceImpl<PaySplitDetailMapper, 
             }
         }
         wrapper.and(w -> w.eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_PENDING)
-                .or()
-                .eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_FAIL)
-                .or()
-                .eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_PROCESSING));
+                .or().eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_FAIL)
+                .or().eq(PaySplitDetail::getTransferStatus, TRANSFER_STATUS_PROCESSING)
+                .or().isNull(PaySplitDetail::getTransferStatus));
         wrapper.orderByDesc(PaySplitDetail::getId);
         return this.page(page, wrapper);
     }

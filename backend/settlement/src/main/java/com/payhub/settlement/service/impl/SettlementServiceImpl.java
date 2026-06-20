@@ -5,10 +5,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.payhub.channel.transfer.TransferRequest;
-import com.payhub.channel.transfer.TransferResult;
-import com.payhub.channel.transfer.TransferService;
-import com.payhub.channel.transfer.TransferServiceFactory;
 import com.payhub.common.exception.BusinessException;
 import com.payhub.common.result.ResultCode;
 import com.payhub.common.utils.OrderNoGenerator;
@@ -23,6 +19,8 @@ import com.payhub.settlement.mapper.PaySplitDetailMapper;
 import com.payhub.settlement.mapper.SettlementRecordMapper;
 import com.payhub.settlement.service.SettlementService;
 import com.payhub.settlement.service.SplitEngineService;
+import com.payhub.settlement.service.SplitTransferService;
+import com.payhub.settlement.service.UnifiedTransferService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -54,7 +52,10 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
     private PaySplitDetailMapper paySplitDetailMapper;
 
     @Autowired
-    private TransferServiceFactory transferServiceFactory;
+    private UnifiedTransferService unifiedTransferService;
+
+    @Autowired
+    private SplitTransferService splitTransferService;
 
     private static final int MAX_RETRY_COUNT = 5;
 
@@ -205,25 +206,13 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
 
     @Override
     public void executeSettlementTask() {
-        log.info("开始执行批量分账明细打款任务");
-
-        List<PaySplitDetail> pendingDetails = paySplitDetailMapper.selectPendingTransferList(100);
-        if (pendingDetails.isEmpty()) {
-            log.info("没有需要处理的分账打款明细");
-            return;
+        log.info("开始执行批量分账明细打款任务(已合并到统一代付链路)");
+        try {
+            boolean result = splitTransferService.processPendingTransfers(100);
+            log.info("批量分账打款任务执行完成, result={}", result);
+        } catch (Exception e) {
+            log.error("批量分账打款任务执行异常", e);
         }
-
-        log.info("待处理分账打款明细数量: {}", pendingDetails.size());
-
-        for (PaySplitDetail detail : pendingDetails) {
-            try {
-                processSplitDetailTransfer(detail);
-            } catch (Exception e) {
-                log.error("处理分账明细打款异常, id={}, splitDetailNo={}", detail.getId(), detail.getSplitDetailNo(), e);
-            }
-        }
-
-        log.info("批量分账明细打款任务执行完成");
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -249,45 +238,23 @@ public class SettlementServiceImpl extends ServiceImpl<SettlementRecordMapper, S
                     || detail.getTransferStatus() == TRANSFER_STATUS_FAIL) {
                 pendingCount++;
                 try {
-                    processSplitDetailTransfer(detail);
+                    splitTransferService.executeTransfer(detail);
                 } catch (Exception e) {
-                    log.error("处理分账明细打款异常, detailId={}", detail.getId(), e);
+                    log.error("处理分账明细打款异常(通过统一链路), detailId={}", detail.getId(), e);
                 }
             }
         }
 
-        log.info("结算 {} 处理完成, 共{}条分账明细, 本次触发{}条待打款",
+        checkAndUpdateSettlementStatus(record.getId());
+        log.info("结算 {} 处理完成, 共{}条分账明细, 本次触发{}条待打款(统一链路)",
                 record.getSettlementNo(), details.size(), pendingCount);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void processSplitDetailTransfer(PaySplitDetail detail) {
-        log.info("开始处理分账明细打款: id={}, splitDetailNo={}, settlementId={}, amount={}",
-                detail.getId(), detail.getSplitDetailNo(), detail.getSettlementId(), detail.getSplitAmount());
-
-        String transferNo = OrderNoGenerator.generateWithPrefix("TF");
-        detail.setTransferNo(transferNo);
-        detail.setTransferStatus(TRANSFER_STATUS_PROCESSING);
-
-        SettlementRecord settlement = this.getById(detail.getSettlementId());
-        String transferChannel = determineTransferChannel(settlement, detail);
-        detail.setTransferChannel(transferChannel);
-
-        paySplitDetailMapper.updateById(detail);
-
-        TransferRequest request = buildTransferRequest(detail, settlement, transferChannel);
-
-        TransferResult result;
-        try {
-            TransferService transferService = transferServiceFactory.getTransferService(transferChannel);
-            result = transferService.transfer(request);
-        } catch (Exception e) {
-            log.error("调用转账通道异常, detailId={}, channel={}", detail.getId(), transferChannel, e);
-            result = TransferResult.fail(transferNo, "通道调用异常: " + e.getMessage());
-        }
-
-        handleTransferResult(detail, result);
-
+        log.info("处理分账明细打款(已重定向到统一代付链路): id={}, splitDetailNo={}",
+                detail.getId(), detail.getSplitDetailNo());
+        splitTransferService.executeTransfer(detail);
         checkAndUpdateSettlementStatus(detail.getSettlementId());
     }
 

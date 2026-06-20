@@ -43,4 +43,22 @@ public class AlipayTransfer implements TransferService {
     public String getChannelCode() {
         return "ALIPAY";
     }
+
+    @Override
+    public TransferResult query(String transferNo, String channelTransferNo) {
+        log.info("[ALIPAY]查询支付宝转账状态, transferNo={}, channelTransferNo={}", transferNo, channelTransferNo);
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        double random = Math.random();
+        if (random < 0.8) {
+            return TransferResult.success(transferNo, channelTransferNo, LocalDateTime.now());
+        } else if (random < 0.95) {
+            return TransferResult.processing(transferNo, channelTransferNo);
+        } else {
+            return TransferResult.fail(transferNo, "E005", "支付宝查询结果：账户不存在或已冻结");
+        }
+    }
 }

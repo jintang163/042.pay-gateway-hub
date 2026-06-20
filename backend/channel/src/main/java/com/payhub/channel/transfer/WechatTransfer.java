@@ -42,4 +42,22 @@ public class WechatTransfer implements TransferService {
     public String getChannelCode() {
         return "WECHAT_PAY";
     }
+
+    @Override
+    public TransferResult query(String transferNo, String channelTransferNo) {
+        log.info("[WECHAT_PAY]查询微信转账状态, transferNo={}, channelTransferNo={}", transferNo, channelTransferNo);
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        double random = Math.random();
+        if (random < 0.8) {
+            return TransferResult.success(transferNo, channelTransferNo, LocalDateTime.now());
+        } else if (random < 0.95) {
+            return TransferResult.processing(transferNo, channelTransferNo);
+        } else {
+            return TransferResult.fail(transferNo, "E006", "微信查询结果：转账已退回");
+        }
+    }
 }

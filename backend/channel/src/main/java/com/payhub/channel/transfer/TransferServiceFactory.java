@@ -38,6 +38,11 @@ public class TransferServiceFactory implements ApplicationContextAware {
         return service;
     }
 
+    public TransferResult queryTransfer(String channelCode, String transferNo, String channelTransferNo) {
+        TransferService service = getTransferService(channelCode);
+        return service.query(transferNo, channelTransferNo);
+    }
+
     public void registerTransferService(String channelCode, TransferService service) {
         SERVICE_MAP.put(channelCode, service);
         log.info("注册转账通道服务: {}", channelCode);

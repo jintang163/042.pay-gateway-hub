@@ -62,6 +62,24 @@ public class NetBankTransfer implements TransferService {
         return "NET_BANK";
     }
 
+    @Override
+    public TransferResult query(String transferNo, String channelTransferNo) {
+        log.info("[NET_BANK]查询网银代付状态, transferNo={}, channelTransferNo={}", transferNo, channelTransferNo);
+        try {
+            Thread.sleep(60);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        double random = Math.random();
+        if (random < 0.70) {
+            return TransferResult.success(transferNo, channelTransferNo, LocalDateTime.now());
+        } else if (random < 0.92) {
+            return TransferResult.processing(transferNo, channelTransferNo);
+        } else {
+            return TransferResult.fail(transferNo, "E004", "网银查询结果：银行处理失败，已退回");
+        }
+    }
+
     private BigDecimal calcFee(BigDecimal amount) {
         BigDecimal fee = amount.multiply(new BigDecimal("0.001"));
         if (fee.compareTo(new BigDecimal("100")) < 0) {

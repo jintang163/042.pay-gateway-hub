@@ -42,4 +42,22 @@ public class BankTransfer implements TransferService {
     public String getChannelCode() {
         return "UNION_PAY";
     }
+
+    @Override
+    public TransferResult query(String transferNo, String channelTransferNo) {
+        log.info("[UNION_PAY]查询银联代付状态, transferNo={}, channelTransferNo={}", transferNo, channelTransferNo);
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        double random = Math.random();
+        if (random < 0.75) {
+            return TransferResult.success(transferNo, channelTransferNo, LocalDateTime.now());
+        } else if (random < 0.9) {
+            return TransferResult.processing(transferNo, channelTransferNo);
+        } else {
+            return TransferResult.fail(transferNo, "E003", "银联查询结果：收款账户异常");
+        }
+    }
 }
